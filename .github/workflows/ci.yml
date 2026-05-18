@@ -1,0 +1,88 @@
+# CI Pipeline - Runs tests on every push and pull request
+# This ensures code quality by automatically running the test suite
+
+name: CI - Run Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      # 1. Check out the repository code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Set up the Python version
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # 3. Cache pip dependencies for faster builds
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      # 4. Install dependencies
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python -m spacy download en_core_web_lg
+
+      # 5. Run linting (basic syntax check)
+      - name: Check syntax with py_compile
+        run: |
+          python -m py_compile main.py
+          python -m py_compile config/settings.py
+          python -m py_compile src/database/vector_store.py
+          python -m py_compile src/database/sql_store.py
+          python -m py_compile src/chatbot/chatbot.py
+          python -m py_compile src/chatbot/rag_chain.py
+          python -m py_compile src/chatbot/guardrails.py
+          python -m py_compile src/evaluation/evaluator.py
+
+      # 6. Run all tests with coverage
+      - name: Run tests
+        env:
+          AZURE_ENDPOINT: https://ai-proxy.lab.epam.com
+          DIAL_API_KEY: ${{ secrets.DIAL_API_KEY }}
+          API_VERSION: "2024-02-01"
+          LLM_MODEL: gpt-4o
+          EMBEDDING_MODEL: all-MiniLM-L6-v2
+        run: |
+          python -m pytest tests/ -v --tb=short --cov=src --cov-report=term-missing
+
+      # 7. Upload coverage report as artifact
+      - name: Generate coverage report
+        if: matrix.python-version == '3.13'
+        run: |
+          pip install coverage
+          python -m pytest tests/ --cov=src --cov-report=html
+        env:
+          AZURE_ENDPOINT: https://ai-proxy.lab.epam.com
+          DIAL_API_KEY: ${{ secrets.DIAL_API_KEY }}
+          API_VERSION: "2024-02-01"
+          LLM_MODEL: gpt-4o
+          EMBEDDING_MODEL: all-MiniLM-L6-v2
+
+      - name: Upload coverage artifact
+        if: matrix.python-version == '3.13'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: htmlcov/
