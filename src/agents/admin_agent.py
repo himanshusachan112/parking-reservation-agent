@@ -25,23 +25,23 @@ TWO MODES OF OPERATION:
 2. API Mode: Admin uses the REST API endpoints directly (Swagger UI)
 """
 
-import sys
 import os
-import requests
-from typing import List, Dict, Any, Optional
+import sys
+from typing import Any, Dict, List, Optional
 
-from langchain_openai import AzureChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.messages import HumanMessage, AIMessage
-from langchain_core.tools import tool
-from langchain_core.runnables import RunnableLambda
+import requests
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnableLambda
+from langchain_core.tools import tool
+from langchain_openai import AzureChatOpenAI
 
 from config.settings import settings
 from src.database.sql_store import SQLStore
-from src.notifications.email_service import EmailService
 from src.mcp.mcp_client import MCPClient
-
+from src.notifications.email_service import EmailService
+from src.utils.masking import mask_email
 
 # ========================
 # ADMIN AGENT TOOLS
@@ -60,7 +60,7 @@ def create_check_availability_tool(sql_store: SQLStore):
         if space_type != "all" and space_type in availability:
             info = availability[space_type]
             return f"{space_type.title()}: {info['available']}/{info['total']} spaces available"
-        
+
         lines = []
         for stype, info in availability.items():
             lines.append(f"  {stype.title()}: {info['available']}/{info['total']} available")
@@ -81,7 +81,7 @@ def create_get_reservation_tool(sql_store: SQLStore):
         return (
             f"Reservation #{r['id']}:\n"
             f"  Name: {r['first_name']} {r['last_name']}\n"
-            f"  Email: {r.get('email', 'N/A')}\n"
+            f"  Email: {mask_email(r.get('email', '') or '')}\n"
             f"  Vehicle: {r['car_number']}\n"
             f"  Space: {r['space_type']}\n"
             f"  Period: {r['start_datetime']} → {r['end_datetime']}\n"
@@ -101,7 +101,7 @@ def create_list_pending_tool(sql_store: SQLStore):
         reservations = sql_store.get_reservations(status="pending")
         if not reservations:
             return "No pending reservations to review."
-        
+
         lines = [f"Found {len(reservations)} pending reservation(s):\n"]
         for r in reservations:
             lines.append(
@@ -117,6 +117,7 @@ def create_list_pending_tool(sql_store: SQLStore):
 # ========================
 # ADMIN AGENT CLASS
 # ========================
+
 
 class AdminAgent:
     """
@@ -210,7 +211,7 @@ class AdminAgent:
             f"═══ RESERVATION REVIEW ═══\n"
             f"ID: #{reservation['id']}\n"
             f"Name: {reservation['first_name']} {reservation['last_name']}\n"
-            f"Email: {reservation.get('email', 'N/A')}\n"
+            f"Email: {mask_email(reservation.get('email', '') or '')}\n"
             f"Vehicle: {reservation['car_number']}\n"
             f"Space Type: {reservation['space_type'].upper()}\n"
             f"Period: {reservation['start_datetime']} → {reservation['end_datetime']}\n"
@@ -247,9 +248,7 @@ class AdminAgent:
         if reservation["status"] != "pending":
             return f"❌ Reservation #{reservation_id} is already {reservation['status']}."
 
-        success = self.sql_store.update_reservation_status(
-            reservation_id, "approved", admin_notes
-        )
+        success = self.sql_store.update_reservation_status(reservation_id, "approved", admin_notes)
 
         if success:
             # Notify the user via email about the approval
@@ -263,10 +262,8 @@ class AdminAgent:
             try:
                 mcp_result = self.mcp_client.write_reservation_to_file(
                     name=f"{reservation['first_name']} {reservation['last_name']}",
-                    car_number=reservation['car_number'],
-                    reservation_period=(
-                        f"{reservation['start_datetime']} - {reservation['end_datetime']}"
-                    ),
+                    car_number=reservation["car_number"],
+                    reservation_period=(f"{reservation['start_datetime']} - {reservation['end_datetime']}"),
                 )
                 print(f"  {mcp_result}")
             except Exception as e:
@@ -300,9 +297,7 @@ class AdminAgent:
         if reservation["status"] != "pending":
             return f"❌ Reservation #{reservation_id} is already {reservation['status']}."
 
-        success = self.sql_store.update_reservation_status(
-            reservation_id, "rejected", admin_notes
-        )
+        success = self.sql_store.update_reservation_status(reservation_id, "rejected", admin_notes)
 
         if success:
             # Notify the user via email about the rejection

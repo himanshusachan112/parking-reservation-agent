@@ -13,12 +13,12 @@ Tests cover:
 Total: 24 tests
 """
 
-import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
-from datetime import datetime
-
-import sys
 import os
+import sys
+from datetime import datetime
+from unittest.mock import MagicMock, PropertyMock, patch
+
+import pytest
 
 # Ensure project root is in path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -28,31 +28,36 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # FIXTURES
 # ════════════════════════════════════════════════════
 
+
 @pytest.fixture
 def mock_sql_store():
     """Create a mock SQLStore with standard responses."""
     store = MagicMock()
     store.initialize_default_data = MagicMock()
-    store.get_reservation_by_id = MagicMock(return_value={
-        "id": 1,
-        "first_name": "Test",
-        "last_name": "User",
-        "email": "test@example.com",
-        "car_number": "TEST123",
-        "space_type": "standard",
-        "start_datetime": "2026-05-15 09:00",
-        "end_datetime": "2026-05-15 18:00",
-        "status": "pending",
-        "created_at": "2026-05-10 10:00:00",
-    })
+    store.get_reservation_by_id = MagicMock(
+        return_value={
+            "id": 1,
+            "first_name": "Test",
+            "last_name": "User",
+            "email": "test@example.com",
+            "car_number": "TEST123",
+            "space_type": "standard",
+            "start_datetime": "2026-05-15 09:00",
+            "end_datetime": "2026-05-15 18:00",
+            "status": "pending",
+            "created_at": "2026-05-10 10:00:00",
+        }
+    )
     store.get_reservations = MagicMock(return_value=[])
     store.update_reservation_status = MagicMock(return_value=True)
-    store.get_total_availability = MagicMock(return_value={
-        "standard": {"available": 5, "total": 10},
-        "large": {"available": 3, "total": 5},
-        "ev": {"available": 2, "total": 4},
-        "vip": {"available": 1, "total": 2},
-    })
+    store.get_total_availability = MagicMock(
+        return_value={
+            "standard": {"available": 5, "total": 10},
+            "large": {"available": 3, "total": 5},
+            "ev": {"available": 2, "total": 4},
+            "vip": {"available": 1, "total": 2},
+        }
+    )
     return store
 
 
@@ -60,6 +65,7 @@ def mock_sql_store():
 def mock_chatbot():
     """Create a mock ParkingChatbot."""
     from src.chatbot.chatbot import ConversationState
+
     bot = MagicMock()
     bot.state = ConversationState.IDLE
     bot.chat = MagicMock(return_value="Hello! I'm the ParkSmart assistant.")
@@ -96,6 +102,7 @@ def mock_admin_agent():
 def initialized_nodes(mock_chatbot, mock_sql_store, mock_email_service, mock_mcp_client, mock_admin_agent):
     """Initialize the graph nodes with mocked components."""
     from src.graph.nodes import initialize_components
+
     initialize_components(
         chatbot=mock_chatbot,
         sql_store=mock_sql_store,
@@ -116,6 +123,7 @@ def initialized_nodes(mock_chatbot, mock_sql_store, mock_email_service, mock_mcp
 def base_state():
     """Create a base state for testing."""
     from src.graph.state import PipelinePhase
+
     return {
         "user_message": "",
         "bot_response": "",
@@ -138,12 +146,14 @@ def base_state():
 # 1. STATE SCHEMA TESTS
 # ════════════════════════════════════════════════════
 
+
 class TestStateSchema:
     """Test the GraphState TypedDict and PipelinePhase enum."""
 
     def test_pipeline_phase_values(self):
         """PipelinePhase enum has all expected phases."""
         from src.graph.state import PipelinePhase
+
         phases = [p.value for p in PipelinePhase]
         assert "user_interaction" in phases
         assert "booking_complete" in phases
@@ -158,11 +168,13 @@ class TestStateSchema:
     def test_pipeline_phase_count(self):
         """PipelinePhase has exactly 10 phases."""
         from src.graph.state import PipelinePhase
+
         assert len(PipelinePhase) == 10
 
     def test_graph_state_is_typed_dict(self):
         """GraphState is a TypedDict subclass."""
         from src.graph.state import GraphState
+
         # TypedDict creates a dict subclass
         state = GraphState(
             user_message="hello",
@@ -175,6 +187,7 @@ class TestStateSchema:
     def test_graph_state_total_false(self):
         """GraphState allows partial initialization (total=False)."""
         from src.graph.state import GraphState
+
         # total=False means not all keys are required
         state = GraphState(user_message="test")
         assert state["user_message"] == "test"
@@ -184,12 +197,14 @@ class TestStateSchema:
 # 2. NODE TESTS
 # ════════════════════════════════════════════════════
 
+
 class TestUserInteractionNode:
     """Test the user_interaction_node."""
 
     def test_empty_message(self, initialized_nodes, base_state):
         """Empty message returns a prompt to type something."""
         from src.graph.nodes import user_interaction_node
+
         base_state["user_message"] = ""
         result = user_interaction_node(base_state)
         assert "type a message" in result["bot_response"].lower()
@@ -209,14 +224,13 @@ class TestUserInteractionNode:
 
     def test_booking_completed(self, initialized_nodes, base_state, mock_chatbot):
         """Booking completion triggers BOOKING_COMPLETE phase."""
+        from src.chatbot.chatbot import ConversationState
         from src.graph.nodes import user_interaction_node
         from src.graph.state import PipelinePhase
-        from src.chatbot.chatbot import ConversationState
 
         # Simulate chatbot returning a booking confirmation
         mock_chatbot.chat.return_value = (
-            "✅ Your reservation request has been submitted! (ID: #5)\n"
-            "An administrator has been notified."
+            "✅ Your reservation request has been submitted! (ID: #5)\n" "An administrator has been notified."
         )
         mock_chatbot.state = ConversationState.IDLE  # Back to idle after booking
 
@@ -229,8 +243,8 @@ class TestUserInteractionNode:
 
     def test_mid_booking_flow(self, initialized_nodes, base_state, mock_chatbot):
         """Mid-booking message stays in USER_INTERACTION with is_booking_flow=True."""
-        from src.graph.nodes import user_interaction_node
         from src.chatbot.chatbot import ConversationState
+        from src.graph.nodes import user_interaction_node
 
         mock_chatbot.chat.return_value = "Please provide your email address:"
         mock_chatbot.state = ConversationState.COLLECTING_EMAIL
@@ -355,6 +369,7 @@ class TestNotificationNode:
     def test_notification_no_id(self, initialized_nodes, base_state):
         """Missing reservation ID in notification returns error."""
         from src.graph.nodes import notification_node
+
         base_state["reservation_id"] = 0
         result = notification_node(base_state)
         assert result["notification_sent"] is False
@@ -457,6 +472,7 @@ class TestCompletionNode:
 # 3. CONDITIONAL EDGE TESTS
 # ════════════════════════════════════════════════════
 
+
 class TestConditionalEdges:
     """Test the routing functions for conditional edges."""
 
@@ -470,9 +486,10 @@ class TestConditionalEdges:
 
     def test_after_user_interaction_qa(self):
         """After user_interaction with Q&A → routes to END."""
+        from langgraph.graph import END
+
         from src.graph.pipeline import after_user_interaction
         from src.graph.state import PipelinePhase
-        from langgraph.graph import END
 
         state = {"conversation_phase": PipelinePhase.USER_INTERACTION.value}
         assert after_user_interaction(state) == END
@@ -501,9 +518,10 @@ class TestConditionalEdges:
 
     def test_after_admin_review_waiting(self):
         """Admin hasn't decided yet → routes to END (pause)."""
+        from langgraph.graph import END
+
         from src.graph.pipeline import after_admin_review
         from src.graph.state import PipelinePhase
-        from langgraph.graph import END
 
         state = {
             "conversation_phase": PipelinePhase.ADMIN_REVIEWING.value,
@@ -529,6 +547,7 @@ class TestConditionalEdges:
 # ════════════════════════════════════════════════════
 # 4. PIPELINE CREATION TESTS
 # ════════════════════════════════════════════════════
+
 
 class TestPipelineCreation:
     """Test pipeline creation and compilation."""
@@ -565,12 +584,14 @@ class TestPipelineCreation:
 # 5. HELPER FUNCTION TESTS
 # ════════════════════════════════════════════════════
 
+
 class TestHelperFunctions:
     """Test utility functions."""
 
     def test_extract_reservation_id(self):
         """Extracts reservation ID from response string."""
         from src.graph.nodes import _extract_reservation_id
+
         assert _extract_reservation_id("Submitted! (ID: #3)") == 3
         assert _extract_reservation_id("Reservation #12 approved") == 12
         assert _extract_reservation_id("No ID here") == 0
@@ -591,6 +612,7 @@ class TestHelperFunctions:
 # ════════════════════════════════════════════════════
 # 6. END-TO-END FLOW TESTS
 # ════════════════════════════════════════════════════
+
 
 class TestEndToEndFlow:
     """Test the full pipeline flow using run_admin_decision."""
@@ -643,6 +665,7 @@ class TestEndToEndFlow:
 # ════════════════════════════════════════════════════
 # 7. RUN USER MESSAGE TEST
 # ════════════════════════════════════════════════════
+
 
 class TestRunUserMessage:
     """Test the run_user_message helper."""

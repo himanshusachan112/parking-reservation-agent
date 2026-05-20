@@ -26,8 +26,8 @@ STATE FIELDS:
 - history: List of (role, message) tuples for conversation context
 """
 
-from typing import TypedDict, Optional, List, Tuple, Any, Literal
 from enum import Enum
+from typing import Any, List, Literal, Optional, Tuple, TypedDict
 
 
 class PipelinePhase(str, Enum):
@@ -41,16 +41,17 @@ class PipelinePhase(str, Enum):
     - MCP client → recording
     - Now all orchestrated in one graph!
     """
-    USER_INTERACTION = "user_interaction"       # Chatbot is talking to user
-    BOOKING_COMPLETE = "booking_complete"        # User confirmed a reservation
-    AWAITING_ADMIN = "awaiting_admin"            # Waiting for admin review
-    ADMIN_REVIEWING = "admin_reviewing"          # Admin is reviewing
-    APPROVED = "approved"                        # Admin approved
-    REJECTED = "rejected"                        # Admin rejected
-    NOTIFYING = "notifying"                      # Sending email notifications
-    RECORDING = "recording"                      # Writing to file via MCP
-    COMPLETED = "completed"                      # Pipeline finished
-    ERROR = "error"                              # Something went wrong
+
+    USER_INTERACTION = "user_interaction"  # Chatbot is talking to user
+    BOOKING_COMPLETE = "booking_complete"  # User confirmed a reservation
+    AWAITING_ADMIN = "awaiting_admin"  # Waiting for admin review
+    ADMIN_REVIEWING = "admin_reviewing"  # Admin is reviewing
+    APPROVED = "approved"  # Admin approved
+    REJECTED = "rejected"  # Admin rejected
+    NOTIFYING = "notifying"  # Sending email notifications
+    RECORDING = "recording"  # Writing to file via MCP
+    COMPLETED = "completed"  # Pipeline finished
+    ERROR = "error"  # Something went wrong
 
 
 class GraphState(TypedDict, total=False):
@@ -68,7 +69,7 @@ class GraphState(TypedDict, total=False):
         reservation_id: Database ID after saving the reservation
         admin_decision: "approve" or "reject"
         admin_notes: Optional admin notes/reason
-        notification_sent: True if email was sent successfully  
+        notification_sent: True if email was sent successfully
         mcp_recorded: True if MCP file write succeeded
         error: Error description if something failed
         history: Conversation history as list of (role, content) tuples
@@ -76,6 +77,7 @@ class GraphState(TypedDict, total=False):
         needs_admin_input: True when graph is waiting for admin to act
         admin_input: The admin's command (e.g., "approve 1")
     """
+
     user_message: str
     bot_response: str
     conversation_phase: str

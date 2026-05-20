@@ -39,15 +39,14 @@ NODE MAP:
 └──────────────────┘
 """
 
-from typing import Dict, Any
+from typing import Any, Dict
 
-from src.chatbot.chatbot import ParkingChatbot, ConversationState
-from src.database.sql_store import SQLStore
 from src.agents.admin_agent import AdminAgent
-from src.notifications.email_service import EmailService
-from src.mcp.mcp_client import MCPClient
+from src.chatbot.chatbot import ConversationState, ParkingChatbot
+from src.database.sql_store import SQLStore
 from src.graph.state import GraphState, PipelinePhase
-
+from src.mcp.mcp_client import MCPClient
+from src.notifications.email_service import EmailService
 
 # ════════════════════════════════════════════════════
 # SHARED COMPONENTS (initialized once, reused by nodes)
@@ -98,6 +97,7 @@ def initialize_components(
 # NODE 1: USER INTERACTION
 # ════════════════════════════════════════════════════
 
+
 def user_interaction_node(state: GraphState) -> Dict[str, Any]:
     """
     Handle user messages through the chatbot.
@@ -130,10 +130,7 @@ def user_interaction_node(state: GraphState) -> Dict[str, Any]:
     # Check if the chatbot just completed a booking (state went back to IDLE
     # AND the response contains a reservation ID)
     is_booking = _chatbot.state != ConversationState.IDLE
-    booking_just_completed = (
-        "reservation request has been submitted" in response.lower()
-        or "id: #" in response.lower()
-    )
+    booking_just_completed = "reservation request has been submitted" in response.lower() or "id: #" in response.lower()
 
     if booking_just_completed:
         # Extract reservation ID from response (format: "ID: #N")
@@ -150,7 +147,8 @@ def user_interaction_node(state: GraphState) -> Dict[str, Any]:
             "reservation_id": reservation_id or 0,
             "reservation_data": reservation or {},
             "is_booking_flow": False,
-            "history": state.get("history", []) + [
+            "history": state.get("history", [])
+            + [
                 ("user", user_message),
                 ("bot", response),
             ],
@@ -161,7 +159,8 @@ def user_interaction_node(state: GraphState) -> Dict[str, Any]:
         "bot_response": response,
         "conversation_phase": PipelinePhase.USER_INTERACTION.value,
         "is_booking_flow": is_booking,
-        "history": state.get("history", []) + [
+        "history": state.get("history", [])
+        + [
             ("user", user_message),
             ("bot", response),
         ],
@@ -182,6 +181,7 @@ def _extract_reservation_id(response: str) -> int:
         The reservation ID as int, or 0 if not found
     """
     import re
+
     match = re.search(r"#(\d+)", response)
     if match:
         return int(match.group(1))
@@ -191,6 +191,7 @@ def _extract_reservation_id(response: str) -> int:
 # ════════════════════════════════════════════════════
 # NODE 2: SAVE & NOTIFY ADMIN
 # ════════════════════════════════════════════════════
+
 
 def save_reservation_node(state: GraphState) -> Dict[str, Any]:
     """
@@ -224,6 +225,7 @@ def save_reservation_node(state: GraphState) -> Dict[str, Any]:
 # ════════════════════════════════════════════════════
 # NODE 3: ADMIN REVIEW (Human-in-the-Loop)
 # ════════════════════════════════════════════════════
+
 
 def admin_review_node(state: GraphState) -> Dict[str, Any]:
     """
@@ -261,7 +263,7 @@ def admin_review_node(state: GraphState) -> Dict[str, Any]:
 
     # Parse admin command
     if admin_input_lower.startswith("approve"):
-        notes = admin_input[len("approve"):].strip() or None
+        notes = admin_input[len("approve") :].strip() or None
         return {
             "admin_decision": "approve",
             "admin_notes": notes or "",
@@ -269,7 +271,7 @@ def admin_review_node(state: GraphState) -> Dict[str, Any]:
             "needs_admin_input": False,
         }
     elif admin_input_lower.startswith("reject"):
-        notes = admin_input[len("reject"):].strip() or "No reason provided"
+        notes = admin_input[len("reject") :].strip() or "No reason provided"
         return {
             "admin_decision": "reject",
             "admin_notes": notes,
@@ -294,6 +296,7 @@ def admin_review_node(state: GraphState) -> Dict[str, Any]:
 # ════════════════════════════════════════════════════
 # NODE 4: NOTIFICATION (Email)
 # ════════════════════════════════════════════════════
+
 
 def notification_node(state: GraphState) -> Dict[str, Any]:
     """
@@ -321,9 +324,7 @@ def notification_node(state: GraphState) -> Dict[str, Any]:
         }
 
     # Update the reservation status in the database
-    success = _sql_store.update_reservation_status(
-        reservation_id, decision, notes
-    )
+    success = _sql_store.update_reservation_status(reservation_id, decision, notes)
 
     if not success:
         return {
@@ -357,6 +358,7 @@ def notification_node(state: GraphState) -> Dict[str, Any]:
 # ════════════════════════════════════════════════════
 # NODE 5: MCP RECORDING (File Write)
 # ════════════════════════════════════════════════════
+
 
 def mcp_recording_node(state: GraphState) -> Dict[str, Any]:
     """
@@ -411,6 +413,7 @@ def mcp_recording_node(state: GraphState) -> Dict[str, Any]:
 # NODE 6: COMPLETION
 # ════════════════════════════════════════════════════
 
+
 def completion_node(state: GraphState) -> Dict[str, Any]:
     """
     Final node — marks the pipeline as completed.
@@ -445,9 +448,7 @@ def completion_node(state: GraphState) -> Dict[str, Any]:
         )
     else:
         summary = (
-            f"═══ PIPELINE COMPLETE ═══\n"
-            f"Reservation #{reservation_id}: Processed\n"
-            f"═════════════════════════"
+            f"═══ PIPELINE COMPLETE ═══\n" f"Reservation #{reservation_id}: Processed\n" f"═════════════════════════"
         )
 
     return {

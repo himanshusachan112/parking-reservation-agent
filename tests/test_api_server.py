@@ -14,8 +14,9 @@ Uses FastAPI's TestClient which simulates HTTP requests without
 needing to start a real server.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
 from src.database.sql_store import SQLStore
@@ -35,6 +36,7 @@ class TestAPIServer:
 
         # Import server module and replace its globals with test instances
         import src.api.server as server_module
+
         server_module.sql_store = self.test_store
         server_module.email_service = MagicMock()
         server_module.email_service.notify_new_reservation.return_value = True
@@ -43,15 +45,18 @@ class TestAPIServer:
 
     def _post_reservation(self):
         """Helper: submit a test reservation via API and return response."""
-        return self.client.post("/api/reservations", json={
-            "first_name": "Bob",
-            "last_name": "Smith",
-            "email": "bob@example.com",
-            "car_number": "TEST-123",
-            "space_type": "standard",
-            "start_datetime": "2026-05-20 08:00",
-            "end_datetime": "2026-05-20 17:00",
-        })
+        return self.client.post(
+            "/api/reservations",
+            json={
+                "first_name": "Bob",
+                "last_name": "Smith",
+                "email": "bob@example.com",
+                "car_number": "TEST-123",
+                "space_type": "standard",
+                "start_datetime": "2026-05-20 08:00",
+                "end_datetime": "2026-05-20 17:00",
+            },
+        )
 
     def test_health_check(self):
         """Health endpoint should return 200 with status healthy."""
@@ -113,9 +118,7 @@ class TestAPIServer:
         create_resp = self._post_reservation()
         rid = create_resp.json()["id"]
 
-        response = self.client.put(f"/api/reservations/{rid}/approve", json={
-            "admin_notes": "Approved by test"
-        })
+        response = self.client.put(f"/api/reservations/{rid}/approve", json={"admin_notes": "Approved by test"})
         assert response.status_code == 200
         assert response.json()["success"] is True
 
@@ -128,9 +131,7 @@ class TestAPIServer:
         create_resp = self._post_reservation()
         rid = create_resp.json()["id"]
 
-        response = self.client.put(f"/api/reservations/{rid}/reject", json={
-            "admin_notes": "No spaces left"
-        })
+        response = self.client.put(f"/api/reservations/{rid}/reject", json={"admin_notes": "No spaces left"})
         assert response.status_code == 200
         assert response.json()["success"] is True
 

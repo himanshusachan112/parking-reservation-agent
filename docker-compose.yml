@@ -1,0 +1,76 @@
+# ============================================
+# ParkSmart - Docker Compose
+# ============================================
+# Orchestrates backend (FastAPI) and frontend (Next.js) services.
+#
+# Usage:
+#   docker compose up --build        # Build and start all services
+#   docker compose up -d             # Start in detached mode
+#   docker compose logs -f backend   # Follow backend logs
+#   docker compose down              # Stop and remove containers
+# ============================================
+
+services:
+  # ---- FastAPI Backend ----
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: parksmart-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - SQL_DATABASE_URL=sqlite:///./data/parking_dynamic.db
+    volumes:
+      - backend-data:/app/data
+      - backend-logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - parksmart-net
+
+  # ---- Next.js Frontend ----
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://backend:8000
+    container_name: parksmart-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - parksmart-net
+
+# ---- Persistent Volumes ----
+volumes:
+  backend-data:
+    driver: local
+  backend-logs:
+    driver: local
+
+# ---- Network ----
+networks:
+  parksmart-net:
+    driver: bridge

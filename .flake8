@@ -1,0 +1,33 @@
+# ============================================
+# Flake8 Configuration
+# ============================================
+
+[flake8]
+max-line-length = 120
+exclude =
+    .git,
+    __pycache__,
+    venv,
+    .venv,
+    build,
+    dist,
+    frontend,
+    .eggs
+ignore =
+    # E203: whitespace before ':' (conflicts with Black)
+    E203,
+    # W503: line break before binary operator (PEP 8 updated)
+    W503,
+    # E501: line too long (handled by Black)
+    E501,
+    # F401: unused imports (many are intentional for type re-exports)
+    F401,
+    # F541: f-string without placeholders (emoji console output)
+    F541,
+    # W291: trailing whitespace (handled by Black)
+    W291
+per-file-ignores =
+    # Allow star imports and unused vars in test files
+    tests/*:F403,F405,F841
+    # Allow E402 (imports not at top) in server.py due to sys.path setup
+    src/api/server.py:E402

@@ -32,15 +32,14 @@ HOW TO RUN:
     or: uvicorn src.mcp.mcp_server:mcp_app --host 0.0.0.0 --port 8001
 """
 
-import os
 import json
+import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
-
 
 # ========================
 # CONFIGURATION
@@ -59,8 +58,10 @@ MCP_API_KEY = os.environ.get("MCP_API_KEY", "mcp-parksmart-secret-key-2026")
 # PYDANTIC MODELS (JSON-RPC style)
 # ========================
 
+
 class ToolParameter(BaseModel):
     """Schema for a single tool parameter."""
+
     name: str
     type: str
     description: str
@@ -69,6 +70,7 @@ class ToolParameter(BaseModel):
 
 class ToolDefinition(BaseModel):
     """Schema describing a tool that this MCP server exposes."""
+
     name: str = Field(description="Unique tool name")
     description: str = Field(description="What the tool does")
     parameters: List[ToolParameter] = Field(description="Expected input parameters")
@@ -76,20 +78,20 @@ class ToolDefinition(BaseModel):
 
 class ToolsListResponse(BaseModel):
     """Response for POST /mcp/tools/list — returns all available tools."""
+
     tools: List[ToolDefinition]
 
 
 class ToolCallRequest(BaseModel):
     """Request body for POST /mcp/tools/call — invoke a specific tool."""
+
     tool_name: str = Field(description="Name of the tool to call")
-    arguments: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="Arguments to pass to the tool"
-    )
+    arguments: Dict[str, Any] = Field(default_factory=dict, description="Arguments to pass to the tool")
 
 
 class ToolCallResponse(BaseModel):
     """Response for POST /mcp/tools/call — result of tool execution."""
+
     success: bool
     tool_name: str
     result: str
@@ -100,23 +102,21 @@ class ToolCallResponse(BaseModel):
 # API KEY AUTHENTICATION
 # ========================
 
+
 def verify_api_key(x_mcp_api_key: str = Header(..., alias="X-MCP-API-KEY")):
     """
     Dependency that verifies the API key on every request.
-    
+
     The client must send the correct key in the X-MCP-API-KEY header.
     This prevents unauthorized access to the MCP tools.
-    
+
     Why a header-based key?
     - Simple and effective for server-to-server communication
     - The key is never exposed in URLs or logs
     - Easy to rotate — just change the env variable
     """
     if x_mcp_api_key != MCP_API_KEY:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid MCP API key. Access denied."
-        )
+        raise HTTPException(status_code=401, detail="Invalid MCP API key. Access denied.")
     return x_mcp_api_key
 
 
@@ -136,20 +136,12 @@ TOOLS_REGISTRY: Dict[str, ToolDefinition] = {
             "Format: Name | Car Number | Reservation Period | Approval Time"
         ),
         parameters=[
-            ToolParameter(
-                name="name",
-                type="string",
-                description="Full name of the person (first and last name)"
-            ),
-            ToolParameter(
-                name="car_number",
-                type="string",
-                description="Vehicle registration / license plate number"
-            ),
+            ToolParameter(name="name", type="string", description="Full name of the person (first and last name)"),
+            ToolParameter(name="car_number", type="string", description="Vehicle registration / license plate number"),
             ToolParameter(
                 name="reservation_period",
                 type="string",
-                description="Reservation period string, e.g. '2026-05-10 09:00 - 2026-05-10 18:00'"
+                description="Reservation period string, e.g. '2026-05-10 09:00 - 2026-05-10 18:00'",
             ),
             ToolParameter(
                 name="approval_time",
@@ -174,18 +166,19 @@ TOOLS_REGISTRY: Dict[str, ToolDefinition] = {
 # TOOL IMPLEMENTATIONS
 # ========================
 
+
 def tool_write_reservation_to_file(arguments: Dict[str, Any]) -> str:
     """
     Write a single approved reservation record to the text file.
-    
+
     This is the core tool of Stage 3. When the admin approves a reservation:
     1. The admin agent/REST API calls the MCP client
     2. The MCP client sends a POST /mcp/tools/call to this server
     3. This function writes the record to data/approved_reservations.txt
-    
+
     File format (one line per reservation):
         Name | Car Number | Reservation Period | Approval Time
-    
+
     Example:
         Himanshu Sachan | UP121 | 2026-05-10 09:00 - 2026-05-10 18:00 | 2026-05-11 14:30:00
     """
@@ -227,7 +220,7 @@ def tool_write_reservation_to_file(arguments: Dict[str, Any]) -> str:
 def tool_read_approved_reservations(arguments: Dict[str, Any]) -> str:
     """
     Read all approved reservation records from the file.
-    
+
     Returns the full contents of approved_reservations.txt.
     If the file doesn't exist, returns a message saying no records found.
     """
@@ -269,7 +262,7 @@ mcp_app = FastAPI(
 def mcp_health():
     """
     Health check endpoint (no auth required).
-    
+
     Used by clients to verify the MCP server is running before calling tools.
     """
     return {
@@ -284,15 +277,15 @@ def mcp_health():
 def list_tools(api_key: str = Depends(verify_api_key)):
     """
     MCP Tool Discovery — List all available tools.
-    
+
     This is the first step in the MCP protocol. The client (agent) calls this
     endpoint to discover what tools are available and what arguments they expect.
-    
+
     The response includes:
     - Tool name (used to call it)
     - Description (so the LLM knows what the tool does)
     - Parameter schemas (so the LLM knows what arguments to pass)
-    
+
     Requires: X-MCP-API-KEY header
     """
     return ToolsListResponse(tools=list(TOOLS_REGISTRY.values()))
@@ -302,27 +295,26 @@ def list_tools(api_key: str = Depends(verify_api_key)):
 def call_tool(request: ToolCallRequest, api_key: str = Depends(verify_api_key)):
     """
     MCP Tool Execution — Call a specific tool with arguments.
-    
+
     This is the second step in the MCP protocol. After discovering tools via
     /mcp/tools/list, the client calls this endpoint to execute a tool.
-    
+
     The request body contains:
     - tool_name: which tool to run (must match a name from /mcp/tools/list)
     - arguments: dict of key-value pairs matching the tool's parameter schema
-    
+
     The response contains:
     - success: whether the tool executed without error
     - result: the tool's return value (string)
     - timestamp: when the tool was executed
-    
+
     Requires: X-MCP-API-KEY header
     """
     # Check if the requested tool exists
     if request.tool_name not in TOOL_FUNCTIONS:
         raise HTTPException(
             status_code=404,
-            detail=f"Tool '{request.tool_name}' not found. "
-                   f"Available tools: {list(TOOL_FUNCTIONS.keys())}"
+            detail=f"Tool '{request.tool_name}' not found. " f"Available tools: {list(TOOL_FUNCTIONS.keys())}",
         )
 
     # Execute the tool
@@ -333,10 +325,7 @@ def call_tool(request: ToolCallRequest, api_key: str = Depends(verify_api_key)):
         # Missing or invalid arguments
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Tool execution failed: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Tool execution failed: {str(e)}")
 
     return ToolCallResponse(
         success=True,

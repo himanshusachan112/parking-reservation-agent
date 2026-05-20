@@ -1,0 +1,39 @@
+# ============================================
+# ParkSmart — Code Quality Configuration
+# ============================================
+# Unified config for Black, isort, mypy, and pytest.
+# ============================================
+
+# ---- Black (Code Formatter) ----
+[tool.black]
+line-length = 120
+target-version = ["py311"]
+include = '\.pyi?$'
+
+# ---- isort (Import Sorter) ----
+[tool.isort]
+profile = "black"
+line_length = 120
+known_first_party = ["src", "config"]
+sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+skip_glob = ["venv/*", ".venv/*", "frontend/*"]
+
+# ---- mypy (Type Checker) ----
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+exclude = ["venv", ".venv", "frontend", "tests"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
+
+# ---- pytest ----
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"

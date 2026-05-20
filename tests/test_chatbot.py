@@ -10,9 +10,11 @@ These tests verify that:
 Uses mocks to avoid actual LLM API calls during testing.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
-from src.chatbot.chatbot import ParkingChatbot, ConversationState, ReservationData
+
+from src.chatbot.chatbot import ConversationState, ParkingChatbot, ReservationData
 
 
 class TestReservationData:
@@ -59,7 +61,7 @@ class TestReservationData:
         assert "John Doe" in summary
         assert "ABC-1234" in summary
         assert "standard" in summary
-        assert "john@example.com" in summary
+        assert "jo***@example.com" in summary
 
 
 class TestParkingChatbot:
@@ -67,16 +69,16 @@ class TestParkingChatbot:
 
     def setup_method(self):
         """Set up chatbot with mocked dependencies."""
-        with patch("src.chatbot.chatbot.VectorStore") as mock_vector, \
-             patch("src.chatbot.chatbot.SQLStore") as mock_sql, \
-             patch("src.chatbot.chatbot.RAGChain") as mock_rag, \
-             patch("src.chatbot.chatbot.Guardrails") as mock_guardrails:
+        with (
+            patch("src.chatbot.chatbot.VectorStore") as mock_vector,
+            patch("src.chatbot.chatbot.SQLStore") as mock_sql,
+            patch("src.chatbot.chatbot.RAGChain") as mock_rag,
+            patch("src.chatbot.chatbot.Guardrails") as mock_guardrails,
+        ):
 
             # Configure guardrails mock
             mock_guardrails_instance = MagicMock()
-            mock_guardrails_instance.check_input.return_value = {
-                "blocked": False, "reason": None, "message": None
-            }
+            mock_guardrails_instance.check_input.return_value = {"blocked": False, "reason": None, "message": None}
             mock_guardrails_instance.filter_output.side_effect = lambda x: x
             mock_guardrails.return_value = mock_guardrails_instance
 

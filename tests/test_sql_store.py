@@ -10,7 +10,8 @@ Uses an in-memory SQLite database for isolation.
 """
 
 import pytest
-from src.database.sql_store import SQLStore, Base
+
+from src.database.sql_store import Base, SQLStore
 
 
 class TestSQLStore:

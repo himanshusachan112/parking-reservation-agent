@@ -16,17 +16,17 @@ This module builds the LangChain pipeline that connects:
 Vector Store (retrieval) → Prompt Template (augmentation) → LLM (generation)
 """
 
-from typing import List, Dict, Any, Optional
-from langchain_openai import AzureChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from typing import Any, Dict, List, Optional
+
 from langchain_core.documents import Document
-from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables import RunnableLambda, RunnablePassthrough
+from langchain_openai import AzureChatOpenAI
 
 from config.settings import settings
-from src.database.vector_store import VectorStore
 from src.database.sql_store import SQLStore
-
+from src.database.vector_store import VectorStore
 
 # ========================
 # PROMPT TEMPLATES
@@ -64,24 +64,27 @@ CURRENT DYNAMIC DATA (Real-time Information):
 """
 
 # The full prompt template combining system instructions + chat history + user input
-RAG_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", SYSTEM_PROMPT),
-    MessagesPlaceholder(variable_name="chat_history", optional=True),
-    ("human", "{question}"),
-])
+RAG_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        ("system", SYSTEM_PROMPT),
+        MessagesPlaceholder(variable_name="chat_history", optional=True),
+        ("human", "{question}"),
+    ]
+)
 
 
 # ========================
 # RAG CHAIN CLASS
 # ========================
 
+
 class RAGChain:
     """
     The main RAG chain that processes user queries.
-    
+
     Flow:
     User Question → Vector Search → Get Dynamic Data → Build Prompt → LLM → Answer
-    
+
     It also maintains chat history for multi-turn conversations
     (important for the reservation flow where we collect info step by step).
     """
@@ -89,7 +92,7 @@ class RAGChain:
     def __init__(self, vector_store: VectorStore = None, sql_store: SQLStore = None):
         """
         Initialize the RAG chain with all components.
-        
+
         Args:
             vector_store: Pre-initialized VectorStore (or creates new one)
             sql_store: Pre-initialized SQLStore (or creates new one)
@@ -110,9 +113,7 @@ class RAGChain:
         )
 
         # Get the retriever from vector store
-        self.retriever = self.vector_store.get_retriever(
-            search_kwargs={"k": settings.eval_top_k}
-        )
+        self.retriever = self.vector_store.get_retriever(search_kwargs={"k": settings.eval_top_k})
 
         # Build the chain
         self.chain = self._build_chain()
@@ -123,7 +124,7 @@ class RAGChain:
     def _build_chain(self):
         """
         Build the LangChain RAG pipeline.
-        
+
         The chain processes inputs through these steps:
         1. Take the user's question
         2. Use it to search the vector store (retrieval)
@@ -161,15 +162,15 @@ class RAGChain:
     def ask(self, question: str) -> str:
         """
         Process a user question through the RAG chain.
-        
+
         This is the main method to call. It:
         1. Retrieves relevant context
         2. Generates an answer
         3. Updates chat history
-        
+
         Args:
             question: The user's message/question
-            
+
         Returns:
             The chatbot's response as a string
         """
@@ -180,7 +181,8 @@ class RAGChain:
         response = str(response) if not isinstance(response, str) else response
 
         # Update chat history for context in future turns
-        from langchain_core.messages import HumanMessage, AIMessage
+        from langchain_core.messages import AIMessage, HumanMessage
+
         self.chat_history.append(HumanMessage(content=question))
         self.chat_history.append(AIMessage(content=response))
 
@@ -194,10 +196,10 @@ class RAGChain:
         """
         Get the documents that would be retrieved for a query.
         Useful for debugging and evaluation.
-        
+
         Args:
             query: The search query
-            
+
         Returns:
             List of relevant documents
         """
@@ -210,7 +212,7 @@ class RAGChain:
     def get_retrieval_context(self, question: str) -> Dict[str, Any]:
         """
         Get full retrieval context for debugging/evaluation.
-        
+
         Returns both the vector search results and dynamic context.
         Useful for evaluating what the LLM "sees" before answering.
         """

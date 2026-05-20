@@ -14,20 +14,16 @@ WHY SPLIT DATA?
 
 import os
 from pathlib import Path
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import TextLoader
 
+from langchain_community.document_loaders import TextLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 # Path to the static parking info file
 DATA_DIR = Path(__file__).parent
 PARKING_INFO_FILE = DATA_DIR / "parking_info.txt"
 
 
-def load_and_split_documents(
-    file_path: str = None,
-    chunk_size: int = 500,
-    chunk_overlap: int = 50
-):
+def load_and_split_documents(file_path: str = None, chunk_size: int = 500, chunk_overlap: int = 50):
     """
     Load a text file and split it into smaller chunks for vector storage.
 

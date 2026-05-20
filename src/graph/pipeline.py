@@ -58,29 +58,30 @@ USAGE:
     state = run_admin_decision(pipeline, state, "approve")
 """
 
-from typing import Dict, Any, Optional
-from langgraph.graph import StateGraph, END
+from typing import Any, Dict, Optional
 
-from src.graph.state import GraphState, PipelinePhase
-from src.graph.nodes import (
-    user_interaction_node,
-    save_reservation_node,
-    admin_review_node,
-    notification_node,
-    mcp_recording_node,
-    completion_node,
-    initialize_components,
-)
+from langgraph.graph import END, StateGraph
+
+from src.agents.admin_agent import AdminAgent
 from src.chatbot.chatbot import ParkingChatbot
 from src.database.sql_store import SQLStore
-from src.notifications.email_service import EmailService
+from src.graph.nodes import (
+    admin_review_node,
+    completion_node,
+    initialize_components,
+    mcp_recording_node,
+    notification_node,
+    save_reservation_node,
+    user_interaction_node,
+)
+from src.graph.state import GraphState, PipelinePhase
 from src.mcp.mcp_client import MCPClient
-from src.agents.admin_agent import AdminAgent
-
+from src.notifications.email_service import EmailService
 
 # ════════════════════════════════════════════════════
 # CONDITIONAL EDGE FUNCTIONS
 # ════════════════════════════════════════════════════
+
 
 def after_user_interaction(state: GraphState) -> str:
     """
@@ -143,6 +144,7 @@ def after_notification(state: GraphState) -> str:
 # ════════════════════════════════════════════════════
 # GRAPH BUILDER
 # ════════════════════════════════════════════════════
+
 
 def create_pipeline(
     chatbot: ParkingChatbot = None,
@@ -242,6 +244,7 @@ def create_pipeline(
 # HELPER FUNCTIONS FOR RUNNING THE GRAPH
 # ════════════════════════════════════════════════════
 
+
 def create_initial_state() -> GraphState:
     """
     Create a fresh initial state for a new conversation.
@@ -316,9 +319,9 @@ def run_admin_decision(pipeline, current_state: dict, admin_command: str) -> dic
     # Build a mini-graph for the admin decision path
     from src.graph.nodes import (
         admin_review_node,
-        notification_node,
-        mcp_recording_node,
         completion_node,
+        mcp_recording_node,
+        notification_node,
     )
 
     # Update state with admin input

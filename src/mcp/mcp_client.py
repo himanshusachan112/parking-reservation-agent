@@ -18,12 +18,12 @@ WHY A SEPARATE CLIENT CLASS?
 
 USAGE:
     from src.mcp.mcp_client import MCPClient
-    
+
     client = MCPClient()
-    
+
     # Discover tools
     tools = client.list_tools()
-    
+
     # Write a reservation to file
     result = client.write_reservation_to_file(
         name="Himanshu Sachan",
@@ -33,16 +33,17 @@ USAGE:
 """
 
 import os
-import httpx
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+import httpx
 
 
 class MCPClient:
     """
     Client for communicating with the ParkSmart MCP Server.
-    
+
     This class is used by the admin agent and REST API to call MCP tools.
     It handles:
     - Server health checks
@@ -60,18 +61,14 @@ class MCPClient:
     ):
         """
         Initialize the MCP client.
-        
+
         Args:
             server_url: Base URL of the MCP server (default: http://localhost:8001)
             api_key: API key for authentication (default: from MCP_API_KEY env var)
             timeout: Request timeout in seconds
         """
-        self.server_url = server_url or os.environ.get(
-            "MCP_SERVER_URL", "http://localhost:8001"
-        )
-        self.api_key = api_key or os.environ.get(
-            "MCP_API_KEY", "mcp-parksmart-secret-key-2026"
-        )
+        self.server_url = server_url or os.environ.get("MCP_SERVER_URL", "http://localhost:8001")
+        self.api_key = api_key or os.environ.get("MCP_API_KEY", "mcp-parksmart-secret-key-2026")
         self.timeout = timeout
 
         # HTTP headers for every request
@@ -86,7 +83,7 @@ class MCPClient:
     def is_server_available(self) -> bool:
         """
         Check if the MCP server is running and healthy.
-        
+
         Calls GET /mcp/health (no auth required).
         Returns True if the server responds with status 200.
         """
@@ -100,13 +97,13 @@ class MCPClient:
     def list_tools(self) -> List[Dict[str, Any]]:
         """
         Discover available tools on the MCP server.
-        
+
         Calls POST /mcp/tools/list to get the list of tools with their
         names, descriptions, and parameter schemas.
-        
+
         Returns:
             List of tool definitions (dicts with name, description, parameters)
-            
+
         Raises:
             ConnectionError: If the MCP server is unreachable
             PermissionError: If the API key is invalid
@@ -127,24 +124,23 @@ class MCPClient:
 
         except httpx.ConnectError:
             raise ConnectionError(
-                f"MCP server not reachable at {self.server_url}. "
-                "Start it with: python main.py --mcp-server"
+                f"MCP server not reachable at {self.server_url}. " "Start it with: python main.py --mcp-server"
             )
 
     def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
         Call a specific tool on the MCP server.
-        
+
         Sends POST /mcp/tools/call with the tool name and arguments.
         The server executes the tool and returns the result.
-        
+
         Args:
             tool_name: Name of the tool to call (from list_tools())
             arguments: Dict of arguments matching the tool's parameter schema
-            
+
         Returns:
             Dict with success, tool_name, result, timestamp
-            
+
         Raises:
             ConnectionError: If the MCP server is unreachable
             PermissionError: If the API key is invalid
@@ -173,8 +169,7 @@ class MCPClient:
 
         except httpx.ConnectError:
             raise ConnectionError(
-                f"MCP server not reachable at {self.server_url}. "
-                "Start it with: python main.py --mcp-server"
+                f"MCP server not reachable at {self.server_url}. " "Start it with: python main.py --mcp-server"
             )
 
     def write_reservation_to_file(
@@ -186,18 +181,18 @@ class MCPClient:
     ) -> str:
         """
         High-level method: Write an approved reservation to file via MCP.
-        
+
         This is the main method called by the admin agent and REST API
         when a reservation is approved. It:
         1. Tries to call the MCP server's write_reservation_to_file tool
         2. If the MCP server is down, falls back to writing the file locally
-        
+
         Args:
             name: Full name (e.g., "Himanshu Sachan")
             car_number: Vehicle registration (e.g., "UP121")
             reservation_period: Period string (e.g., "2026-05-10 09:00 - 2026-05-10 18:00")
             approval_time: When approved (auto-generated if not provided)
-            
+
         Returns:
             Status message indicating success (via MCP or fallback)
         """
@@ -222,14 +217,14 @@ class MCPClient:
     def _fallback_write(self, arguments: Dict[str, Any], error_msg: str) -> str:
         """
         Fallback: Write reservation to file locally when MCP server is unreachable.
-        
+
         This ensures reservations are never lost even if the MCP server is down.
         The file format is identical to what the MCP server writes.
-        
+
         Args:
             arguments: Same dict that would have been sent to MCP
             error_msg: The error that caused the fallback
-            
+
         Returns:
             Status message indicating fallback was used
         """
@@ -256,18 +251,15 @@ class MCPClient:
         with open(self.fallback_file, "a", encoding="utf-8") as f:
             f.write(record + "\n")
 
-        return (
-            f"⚠ MCP server unavailable ({error_msg}). "
-            f"Fallback: wrote directly to file: {record}"
-        )
+        return f"⚠ MCP server unavailable ({error_msg}). " f"Fallback: wrote directly to file: {record}"
 
     def read_approved_reservations(self) -> str:
         """
         Read all approved reservations from the MCP server.
-        
+
         Calls the read_approved_reservations tool on the MCP server.
         Falls back to reading the local file if server is unreachable.
-        
+
         Returns:
             Contents of the approved reservations file
         """

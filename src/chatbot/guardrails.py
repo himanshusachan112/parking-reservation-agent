@@ -18,7 +18,7 @@ HOW PII DETECTION WORKS:
   * Named Entity Recognition (NER) - ML models trained to find names, orgs, etc.
   * Pattern matching - Regex for structured data (phone, email, SSN)
   * Context analysis - Checks surrounding words (e.g., "call me at" before a number)
-  
+
 - Each detection has a confidence score (0.0 to 1.0)
 - We only act on detections above our threshold (default: 0.7)
 
@@ -28,7 +28,7 @@ ALTERNATIVE APPROACH (fallback if Presidio is not available):
 """
 
 import re
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
 from config.settings import settings
 
@@ -36,7 +36,7 @@ from config.settings import settings
 class Guardrails:
     """
     Guardrails for protecting sensitive data and preventing misuse.
-    
+
     Uses a dual approach:
     - Presidio NLP analyzer (if available) for high-accuracy PII detection
     - Regex fallback patterns for basic protection
@@ -86,31 +86,32 @@ class Guardrails:
 
         # Regex patterns for PII detection (fallback)
         self.pii_patterns = {
-            "email": r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
-            "phone": r'\b(\+?1?[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b',
-            "credit_card": r'\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b',
-            "ssn": r'\b\d{3}[-\s]?\d{2}[-\s]?\d{4}\b',
+            "email": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
+            "phone": r"\b(\+?1?[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b",
+            "credit_card": r"\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b",
+            "ssn": r"\b\d{3}[-\s]?\d{2}[-\s]?\d{4}\b",
         }
 
         # Known safe patterns (parking-related data that looks like PII but isn't)
         self.safe_patterns = [
-            r'\+1-555-PARK-123',  # Our own phone number
-            r'support@parksmart\.com',  # Our own email
-            r'reservations@parksmart\.com',
-            r'feedback@parksmart\.com',
+            r"\+1-555-PARK-123",  # Our own phone number
+            r"support@parksmart\.com",  # Our own email
+            r"reservations@parksmart\.com",
+            r"feedback@parksmart\.com",
+            r"[A-Za-z0-9]{1,2}\*{2,}@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",  # Masked emails (e.g. sa****@gmail.com)
         ]
 
     def check_input(self, user_input: str) -> Dict[str, Any]:
         """
         Check user input for malicious content.
-        
+
         Checks for:
         1. Prompt injection attempts
         2. Requests for other users' private data
-        
+
         Args:
             user_input: The raw user message
-            
+
         Returns:
             Dict with:
             - blocked: bool (True if message should be blocked)
@@ -156,13 +157,13 @@ class Guardrails:
     def filter_output(self, response: str) -> str:
         """
         Filter the LLM output to remove any accidentally leaked PII.
-        
+
         This is a safety net - even if the LLM somehow includes sensitive
         data in its response, this function catches and redacts it.
-        
+
         Args:
             response: The raw LLM response
-            
+
         Returns:
             Filtered response with PII redacted
         """
@@ -189,8 +190,8 @@ class Guardrails:
     def _filter_with_presidio(self, text: str, safe_ranges: List[tuple]) -> str:
         """
         Use Presidio NLP analyzer to detect and redact PII.
-        
-        Presidio detects: names, emails, phones, credit cards, 
+
+        Presidio detects: names, emails, phones, credit cards,
         addresses, SSNs, and many more entity types.
         """
         from presidio_analyzer import AnalyzerEngine
@@ -200,8 +201,12 @@ class Guardrails:
             text=text,
             language="en",
             entities=[
-                "PHONE_NUMBER", "EMAIL_ADDRESS", "CREDIT_CARD",
-                "US_SSN", "IBAN_CODE", "IP_ADDRESS",
+                "PHONE_NUMBER",
+                "EMAIL_ADDRESS",
+                "CREDIT_CARD",
+                "US_SSN",
+                "IBAN_CODE",
+                "IP_ADDRESS",
             ],
             score_threshold=self.confidence_threshold,
         )
@@ -209,10 +214,7 @@ class Guardrails:
         # Filter out detections that fall within "safe" ranges
         filtered_results = []
         for result in results:
-            is_safe = any(
-                safe_start <= result.start and result.end <= safe_end
-                for safe_start, safe_end in safe_ranges
-            )
+            is_safe = any(safe_start <= result.start and result.end <= safe_end for safe_start, safe_end in safe_ranges)
             if not is_safe:
                 filtered_results.append(result)
 
@@ -239,18 +241,13 @@ class Guardrails:
             for match in re.finditer(pattern, filtered_text):
                 # Check if this match is in a safe range
                 is_safe = any(
-                    safe_start <= match.start() and match.end() <= safe_end
-                    for safe_start, safe_end in safe_ranges
+                    safe_start <= match.start() and match.end() <= safe_end for safe_start, safe_end in safe_ranges
                 )
 
                 if not is_safe:
                     # Replace with redaction marker
                     redacted = f"[{pii_type.upper()}_REDACTED]"
-                    filtered_text = (
-                        filtered_text[:match.start()]
-                        + redacted
-                        + filtered_text[match.end():]
-                    )
+                    filtered_text = filtered_text[: match.start()] + redacted + filtered_text[match.end() :]
                     # Recalculate safe_ranges offset (text length changed)
                     break  # Start over to handle offset changes
 
@@ -259,7 +256,7 @@ class Guardrails:
     def detect_pii_in_text(self, text: str) -> List[Dict[str, Any]]:
         """
         Detect PII entities in text (for evaluation/debugging).
-        
+
         Returns a list of detected entities with their types and positions.
         Useful for testing the guardrails system.
         """
@@ -275,7 +272,7 @@ class Guardrails:
                     "start": r.start,
                     "end": r.end,
                     "score": r.score,
-                    "text": text[r.start:r.end],
+                    "text": text[r.start : r.end],
                 }
                 for r in results
             ]
@@ -284,11 +281,13 @@ class Guardrails:
             detections = []
             for pii_type, pattern in self.pii_patterns.items():
                 for match in re.finditer(pattern, text):
-                    detections.append({
-                        "entity_type": pii_type.upper(),
-                        "start": match.start(),
-                        "end": match.end(),
-                        "score": 1.0,
-                        "text": match.group(),
-                    })
+                    detections.append(
+                        {
+                            "entity_type": pii_type.upper(),
+                            "start": match.start(),
+                            "end": match.end(),
+                            "score": 1.0,
+                            "text": match.group(),
+                        }
+                    )
             return detections

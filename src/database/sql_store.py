@@ -22,9 +22,9 @@ We use SQLite because:
 
 import os
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
 
-from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime
+from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -38,18 +38,20 @@ Base = declarative_base()
 # DATABASE MODELS (Tables)
 # ========================
 
+
 class WorkingHours(Base):
     """
     Stores the opening and closing hours for each day of the week.
     Example: Monday -> 06:00 to 23:00
     """
+
     __tablename__ = "working_hours"
 
     id = Column(Integer, primary_key=True)
     day_of_week = Column(String, nullable=False, unique=True)  # Monday, Tuesday, etc.
-    open_time = Column(String, nullable=False)   # "06:00"
+    open_time = Column(String, nullable=False)  # "06:00"
     close_time = Column(String, nullable=False)  # "23:00"
-    is_open = Column(Boolean, default=True)      # False if closed that day
+    is_open = Column(Boolean, default=True)  # False if closed that day
 
 
 class ParkingPrice(Base):
@@ -57,12 +59,13 @@ class ParkingPrice(Base):
     Stores pricing for different parking space types and durations.
     Example: Standard parking -> $3/hour, $15/day
     """
+
     __tablename__ = "parking_prices"
 
     id = Column(Integer, primary_key=True)
-    space_type = Column(String, nullable=False)    # "standard", "large", "ev", "vip"
+    space_type = Column(String, nullable=False)  # "standard", "large", "ev", "vip"
     duration_type = Column(String, nullable=False)  # "hourly", "daily", "weekly", "monthly"
-    price = Column(Float, nullable=False)           # Price in dollars
+    price = Column(Float, nullable=False)  # Price in dollars
     currency = Column(String, default="USD")
 
 
@@ -71,11 +74,12 @@ class ParkingAvailability(Base):
     Stores current availability of parking spaces by type and floor.
     Example: Floor 1, Standard -> 45 total, 12 available
     """
+
     __tablename__ = "parking_availability"
 
     id = Column(Integer, primary_key=True)
     floor = Column(Integer, nullable=False)
-    space_type = Column(String, nullable=False)      # "standard", "large", "ev", "disabled", "vip"
+    space_type = Column(String, nullable=False)  # "standard", "large", "ev", "disabled", "vip"
     total_spaces = Column(Integer, nullable=False)
     available_spaces = Column(Integer, nullable=False)
     last_updated = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -93,19 +97,23 @@ class Reservation(Base):
     This table is the communication bridge between the user-facing
     chatbot (Stage 1) and the admin agent (Stage 2).
     """
+
     __tablename__ = "reservations"
 
     id = Column(Integer, primary_key=True)
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=False)
-    email = Column(String, nullable=True)              # User's email for notifications
+    email = Column(String, nullable=True)  # User's email for notifications
     car_number = Column(String, nullable=False)
-    space_type = Column(String, nullable=False)      # standard, large, ev, vip
-    start_datetime = Column(String, nullable=False)   # "2026-05-10 09:00"
-    end_datetime = Column(String, nullable=False)     # "2026-05-10 18:00"
-    status = Column(String, default="pending")         # pending, approved, rejected
-    admin_notes = Column(String, nullable=True)        # Reason for rejection, etc.
+    space_type = Column(String, nullable=False)  # standard, large, ev, vip
+    start_datetime = Column(String, nullable=False)  # "2026-05-10 09:00"
+    end_datetime = Column(String, nullable=False)  # "2026-05-10 18:00"
+    status = Column(String, default="pending")  # pending, approved, rejected
+    admin_notes = Column(String, nullable=True)  # Reason for rejection, etc.
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
+    )
     approved_at = Column(DateTime, nullable=True)
 
 
@@ -113,10 +121,11 @@ class Reservation(Base):
 # DATABASE MANAGER CLASS
 # ========================
 
+
 class SQLStore:
     """
     Manages the SQL database for dynamic parking data.
-    
+
     Provides methods to:
     - Initialize the database with default data
     - Query working hours, prices, and availability
@@ -126,7 +135,7 @@ class SQLStore:
     def __init__(self, database_url: str = None):
         """
         Initialize the SQL database connection.
-        
+
         Args:
             database_url: SQLAlchemy connection string.
                          Defaults to SQLite file from settings.
@@ -159,6 +168,22 @@ class SQLStore:
 
         # Create all tables if they don't exist
         Base.metadata.create_all(self.engine)
+
+        # Migrate existing tables: add columns introduced after initial release
+        self._migrate_schema()
+
+    def _migrate_schema(self):
+        """Add missing columns to existing tables (lightweight migration)."""
+        from sqlalchemy import inspect, text
+
+        inspector = inspect(self.engine)
+        if "reservations" in inspector.get_table_names():
+            columns = [col["name"] for col in inspector.get_columns("reservations")]
+            with self.engine.begin() as conn:
+                if "updated_at" not in columns:
+                    conn.execute(text("ALTER TABLE reservations ADD COLUMN updated_at DATETIME"))
+                if "email" not in columns:
+                    conn.execute(text("ALTER TABLE reservations ADD COLUMN email VARCHAR"))
 
     def initialize_default_data(self):
         """
@@ -234,7 +259,7 @@ class SQLStore:
     def get_working_hours(self) -> List[Dict[str, Any]]:
         """
         Get working hours for all days.
-        
+
         Returns:
             List of dicts with day, open_time, close_time, is_open
         """
@@ -256,10 +281,10 @@ class SQLStore:
     def get_prices(self, space_type: str = None) -> List[Dict[str, Any]]:
         """
         Get parking prices, optionally filtered by space type.
-        
+
         Args:
             space_type: Filter by type (e.g., "standard", "large", "ev", "vip")
-            
+
         Returns:
             List of dicts with space_type, duration_type, price, currency
         """
@@ -284,11 +309,11 @@ class SQLStore:
     def get_availability(self, space_type: str = None, floor: int = None) -> List[Dict[str, Any]]:
         """
         Get parking space availability.
-        
+
         Args:
             space_type: Filter by space type
             floor: Filter by floor number
-            
+
         Returns:
             List of dicts with floor, space_type, total_spaces, available_spaces
         """
@@ -316,13 +341,14 @@ class SQLStore:
     def get_total_availability(self) -> Dict[str, int]:
         """
         Get a summary of total available spaces across all floors.
-        
+
         Returns:
             Dict with space_type -> total available count
         """
         session = self.SessionLocal()
         try:
             from sqlalchemy import func
+
             results = (
                 session.query(
                     ParkingAvailability.space_type,
@@ -332,10 +358,7 @@ class SQLStore:
                 .group_by(ParkingAvailability.space_type)
                 .all()
             )
-            return {
-                r.space_type: {"available": int(r.available), "total": int(r.total)}
-                for r in results
-            }
+            return {r.space_type: {"available": int(r.available), "total": int(r.total)} for r in results}
         finally:
             session.close()
 
@@ -343,7 +366,7 @@ class SQLStore:
         """
         Generate a formatted string of all dynamic data for the RAG context.
         This is injected into the LLM prompt alongside vector search results.
-        
+
         Returns:
             Formatted string with hours, prices, and availability
         """
@@ -367,9 +390,7 @@ class SQLStore:
         # Availability
         context_parts.append("\n=== CURRENT AVAILABILITY ===")
         for space_type, counts in availability.items():
-            context_parts.append(
-                f"{space_type.title()}: {counts['available']} / {counts['total']} spaces available"
-            )
+            context_parts.append(f"{space_type.title()}: {counts['available']} / {counts['total']} spaces available")
 
         return "\n".join(context_parts)
 
@@ -445,6 +466,7 @@ class SQLStore:
                     "status": r.status,
                     "admin_notes": r.admin_notes,
                     "created_at": r.created_at.isoformat() if r.created_at else None,
+                    "updated_at": r.updated_at.isoformat() if r.updated_at else None,
                     "approved_at": r.approved_at.isoformat() if r.approved_at else None,
                 }
                 for r in reservations
@@ -464,9 +486,7 @@ class SQLStore:
         """
         session = self.SessionLocal()
         try:
-            r = session.query(Reservation).filter(
-                Reservation.id == reservation_id
-            ).first()
+            r = session.query(Reservation).filter(Reservation.id == reservation_id).first()
             if not r:
                 return None
             return {
@@ -481,14 +501,13 @@ class SQLStore:
                 "status": r.status,
                 "admin_notes": r.admin_notes,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
+                "updated_at": r.updated_at.isoformat() if r.updated_at else None,
                 "approved_at": r.approved_at.isoformat() if r.approved_at else None,
             }
         finally:
             session.close()
 
-    def update_reservation_status(
-        self, reservation_id: int, status: str, admin_notes: str = None
-    ) -> bool:
+    def update_reservation_status(self, reservation_id: int, status: str, admin_notes: str = None) -> bool:
         """
         Update a reservation's status (approve or reject).
 
@@ -504,13 +523,12 @@ class SQLStore:
         """
         session = self.SessionLocal()
         try:
-            reservation = session.query(Reservation).filter(
-                Reservation.id == reservation_id
-            ).first()
+            reservation = session.query(Reservation).filter(Reservation.id == reservation_id).first()
             if not reservation:
                 return False
             reservation.status = status
             reservation.admin_notes = admin_notes
+            reservation.updated_at = datetime.now(timezone.utc)
             if status == "approved":
                 reservation.approved_at = datetime.now(timezone.utc)
             session.commit()

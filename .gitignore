@@ -38,3 +38,18 @@ Thumbs.db
 
 # Presentations
 *.pptx
+
+# Logs
+logs/
+*.log
+
+# Docker
+docker-compose.override.yml
+
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/.terraform.lock.hcl
+terraform/terraform.tfvars
+*.tfvars

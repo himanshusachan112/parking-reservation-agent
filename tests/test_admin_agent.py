@@ -10,10 +10,12 @@ Tests cover:
 6. Handling non-existent reservations
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
-from src.database.sql_store import SQLStore
+
 from src.agents.admin_agent import AdminAgent
+from src.database.sql_store import SQLStore
 
 
 class TestAdminAgent:
@@ -32,15 +34,17 @@ class TestAdminAgent:
 
     def _create_sample_reservation(self):
         """Helper: insert a sample reservation and return its ID."""
-        return self.sql_store.save_reservation({
-            "first_name": "Alice",
-            "last_name": "Johnson",
-            "email": "alice@example.com",
-            "car_number": "XYZ-789",
-            "space_type": "standard",
-            "start_datetime": "2026-05-15 09:00",
-            "end_datetime": "2026-05-15 18:00",
-        })
+        return self.sql_store.save_reservation(
+            {
+                "first_name": "Alice",
+                "last_name": "Johnson",
+                "email": "alice@example.com",
+                "car_number": "XYZ-789",
+                "space_type": "standard",
+                "start_datetime": "2026-05-15 09:00",
+                "end_datetime": "2026-05-15 18:00",
+            }
+        )
 
     def test_get_pending_reservations_empty(self):
         """When no reservations exist, pending list should be empty."""

@@ -12,9 +12,9 @@ HOW IT WORKS:
 
 import os
 from pathlib import Path
-from pydantic_settings import BaseSettings
-from pydantic import ConfigDict
 
+from pydantic import ConfigDict
+from pydantic_settings import BaseSettings
 
 # Project root directory (2 levels up from config/)
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -41,12 +41,18 @@ class Settings(BaseSettings):
     # all-MiniLM-L6-v2: free local model, no API needed, 384-dim vectors
     embedding_model: str = "all-MiniLM-L6-v2"
 
-    # === ChromaDB (Vector Database) Configuration ===
-    # Where to store the vector database files on disk
-    chroma_persist_directory: str = str(PROJECT_ROOT / "data" / "chroma_db")
+    # === Pinecone (Vector Database) Configuration ===
+    # Pinecone API key (get from https://app.pinecone.io)
+    pinecone_api_key: str = ""
 
-    # Name of the collection inside ChromaDB
-    chroma_collection_name: str = "parking_info"
+    # Name of the Pinecone index
+    pinecone_index_name: str = "parking"
+
+    # Pinecone serverless environment / region
+    pinecone_environment: str = "us-east-1"
+
+    # Pinecone cloud provider (aws, gcp, azure)
+    pinecone_cloud: str = "aws"
 
     # === SQL Database Configuration ===
     # SQLite connection string for dynamic data (prices, availability, hours)
@@ -69,6 +75,13 @@ class Settings(BaseSettings):
 
     # Maximum tokens in the response
     llm_max_tokens: int = 1024
+
+    # === Email / SMTP Configuration ===
+    smtp_host: str = ""
+    smtp_port: int = 465
+    smtp_username: str = ""
+    smtp_password: str = ""
+    admin_email: str = "admin@parksmart.com"
 
     model_config = ConfigDict(
         env_file=".env",

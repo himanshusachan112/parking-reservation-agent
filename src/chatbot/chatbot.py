@@ -20,20 +20,22 @@ The state machine ensures we collect all required info before
 escalating to the admin for approval (Stage 2).
 """
 
-from enum import Enum
-from typing import Dict, Optional, Any
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
+from typing import Any, Dict, Optional
 
-from src.chatbot.rag_chain import RAGChain
 from src.chatbot.guardrails import Guardrails
-from src.database.vector_store import VectorStore
+from src.chatbot.rag_chain import RAGChain
 from src.database.sql_store import SQLStore
+from src.database.vector_store import VectorStore
 from src.notifications.email_service import EmailService
+from src.utils.masking import mask_email
 
 
 class ConversationState(Enum):
     """Possible states in the conversation flow."""
+
     IDLE = "idle"
     COLLECTING_NAME = "collecting_name"
     COLLECTING_EMAIL = "collecting_email"
@@ -50,6 +52,7 @@ class ReservationData:
     Holds the data collected during the reservation process.
     Each field is filled step-by-step as the user provides info.
     """
+
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     email: Optional[str] = None
@@ -60,15 +63,17 @@ class ReservationData:
 
     def is_complete(self) -> bool:
         """Check if all required fields are filled."""
-        return all([
-            self.first_name,
-            self.last_name,
-            self.email,
-            self.car_number,
-            self.space_type,
-            self.start_datetime,
-            self.end_datetime,
-        ])
+        return all(
+            [
+                self.first_name,
+                self.last_name,
+                self.email,
+                self.car_number,
+                self.space_type,
+                self.start_datetime,
+                self.end_datetime,
+            ]
+        )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -84,10 +89,11 @@ class ReservationData:
 
     def summary(self) -> str:
         """Generate a human-readable summary for confirmation."""
+        masked = mask_email(self.email) if self.email else "N/A"
         return (
             f"📋 Reservation Summary:\n"
             f"  • Name: {self.first_name} {self.last_name}\n"
-            f"  • Email: {self.email}\n"
+            f"  • Email: {masked}\n"
             f"  • Vehicle: {self.car_number}\n"
             f"  • Space Type: {self.space_type}\n"
             f"  • From: {self.start_datetime}\n"
@@ -98,9 +104,9 @@ class ReservationData:
 class ParkingChatbot:
     """
     Main chatbot class that manages the full conversation.
-    
+
     This is the primary interface - call chatbot.chat(message) to interact.
-    
+
     It handles:
     - General Q&A (using RAG chain)
     - Reservation flow (state machine)
@@ -135,18 +141,18 @@ class ParkingChatbot:
     def chat(self, user_message: str) -> str:
         """
         Process a user message and return a response.
-        
+
         This is the main entry point for the chatbot.
-        
+
         Flow:
         1. Check guardrails on input (block if sensitive data detected)
         2. Check if we're in a reservation flow → handle state
         3. Otherwise, detect intent and respond accordingly
         4. Check guardrails on output before returning
-        
+
         Args:
             user_message: The user's input text
-            
+
         Returns:
             The chatbot's response string
         """
@@ -172,13 +178,13 @@ class ParkingChatbot:
     def _handle_general_query(self, message: str) -> str:
         """
         Handle a message when we're in IDLE state.
-        
+
         Uses a SINGLE LLM call for both intent detection and answering:
         - The system prompt tells the LLM to respond with "INTENT:BOOKING"
           if the user wants to CREATE a new reservation.
         - For all other messages (questions, info requests, etc.), the LLM
           answers normally using RAG context.
-        
+
         This avoids the old keyword-matching problem where words like
         "reservation" in "show my reservation" would falsely trigger booking.
         """
@@ -207,7 +213,7 @@ class ParkingChatbot:
     def _handle_reservation_flow(self, message: str) -> str:
         """
         Handle messages during the reservation flow (state machine).
-        
+
         Each state expects specific data from the user:
         - COLLECTING_NAME → expects "FirstName LastName"
         - COLLECTING_CAR → expects license plate number
@@ -259,17 +265,17 @@ class ParkingChatbot:
     def _collect_email(self, message: str) -> str:
         """Process the user's email input."""
         import re
+
         email = message.strip()
         # Basic email validation
-        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
+        if not re.match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", email):
             return "That doesn't look like a valid email address. Please try again (e.g., 'john@example.com'):"
 
         self.reservation_data.email = email
         self.state = ConversationState.COLLECTING_CAR
 
         return (
-            f"Email: {email} ✓\n\n"
-            f"**Please provide your vehicle registration number (license plate):**"
+            f"Email: {mask_email(email)} ✓\n\n" f"**Please provide your vehicle registration number (license plate):**"
         )
 
     def _collect_car(self, message: str) -> str:
@@ -294,10 +300,17 @@ class ParkingChatbot:
     def _collect_space_type(self, message: str) -> str:
         """Process the space type selection."""
         type_mapping = {
-            "1": "standard", "standard": "standard",
-            "2": "large", "large": "large",
-            "3": "ev", "ev": "ev", "electric": "ev", "electric vehicle": "ev",
-            "4": "vip", "vip": "vip", "premium": "vip",
+            "1": "standard",
+            "standard": "standard",
+            "2": "large",
+            "large": "large",
+            "3": "ev",
+            "ev": "ev",
+            "electric": "ev",
+            "electric vehicle": "ev",
+            "4": "vip",
+            "vip": "vip",
+            "premium": "vip",
         }
 
         choice = message.strip().lower()
@@ -397,7 +410,7 @@ class ParkingChatbot:
                     "You'll receive an email notification once it's approved.\n\n"
                     "Is there anything else I can help you with?"
                 )
-            except Exception as e:
+            except Exception:
                 return (
                     "⚠️ There was an issue saving your reservation, but it has been noted.\n"
                     "An administrator will review your request shortly.\n\n"

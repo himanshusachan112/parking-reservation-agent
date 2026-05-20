@@ -31,18 +31,19 @@ WHY THIS MATTERS:
 """
 
 import time
-from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
-from src.database.vector_store import VectorStore
-from src.database.sql_store import SQLStore
 from src.chatbot.rag_chain import RAGChain
-from src.data.load_data import get_sample_questions, get_ground_truth_answers
+from src.data.load_data import get_ground_truth_answers, get_sample_questions
+from src.database.sql_store import SQLStore
+from src.database.vector_store import VectorStore
 
 
 @dataclass
 class EvaluationResult:
     """Holds the results of a single evaluation query."""
+
     question: str
     expected_answer: str
     generated_answer: str
@@ -58,6 +59,7 @@ class EvaluationResult:
 @dataclass
 class EvaluationReport:
     """Aggregated evaluation results across all test queries."""
+
     total_questions: int = 0
     avg_retrieval_time_ms: float = 0.0
     avg_generation_time_ms: float = 0.0
@@ -89,7 +91,7 @@ class EvaluationReport:
 class RAGEvaluator:
     """
     Evaluates the RAG system's performance and accuracy.
-    
+
     Usage:
         evaluator = RAGEvaluator(rag_chain)
         report = evaluator.run_evaluation()
@@ -99,26 +101,23 @@ class RAGEvaluator:
     def __init__(self, rag_chain: RAGChain = None):
         """
         Initialize the evaluator.
-        
+
         Args:
             rag_chain: The RAG chain to evaluate. If None, creates a new one.
         """
         self.rag_chain = rag_chain
 
     def run_evaluation(
-        self,
-        questions: List[str] = None,
-        ground_truth: List[str] = None,
-        k: int = 5
+        self, questions: List[str] = None, ground_truth: List[str] = None, k: int = 5
     ) -> EvaluationReport:
         """
         Run the full evaluation suite.
-        
+
         Args:
             questions: List of test questions (defaults to sample questions)
             ground_truth: Expected answers (defaults to sample ground truth)
             k: Number of documents to retrieve for K-based metrics
-            
+
         Returns:
             EvaluationReport with all metrics
         """
@@ -127,8 +126,7 @@ class RAGEvaluator:
         if ground_truth is None:
             ground_truth = get_ground_truth_answers()
 
-        assert len(questions) == len(ground_truth), \
-            "Number of questions must match number of ground truth answers"
+        assert len(questions) == len(ground_truth), "Number of questions must match number of ground truth answers"
 
         results = []
 
@@ -140,15 +138,10 @@ class RAGEvaluator:
         report = self._aggregate_results(results)
         return report
 
-    def _evaluate_single_query(
-        self,
-        question: str,
-        expected_answer: str,
-        k: int
-    ) -> EvaluationResult:
+    def _evaluate_single_query(self, question: str, expected_answer: str, k: int) -> EvaluationResult:
         """
         Evaluate a single question.
-        
+
         Steps:
         1. Measure retrieval time
         2. Measure generation time
@@ -171,14 +164,10 @@ class RAGEvaluator:
         doc_texts = [doc.page_content for doc in retrieved_docs]
 
         # Step 3: Calculate Precision@K and Recall@K
-        precision, recall = self._calculate_retrieval_metrics(
-            doc_texts, expected_answer, k
-        )
+        precision, recall = self._calculate_retrieval_metrics(doc_texts, expected_answer, k)
 
         # Step 4: Calculate answer relevance
-        relevance_score = self._calculate_answer_relevance(
-            generated_answer, expected_answer
-        )
+        relevance_score = self._calculate_answer_relevance(generated_answer, expected_answer)
 
         # Clear chat history between evaluations
         self.rag_chain.clear_history()
@@ -196,26 +185,21 @@ class RAGEvaluator:
             answer_relevance_score=relevance_score,
         )
 
-    def _calculate_retrieval_metrics(
-        self,
-        retrieved_texts: List[str],
-        expected_answer: str,
-        k: int
-    ) -> tuple:
+    def _calculate_retrieval_metrics(self, retrieved_texts: List[str], expected_answer: str, k: int) -> tuple:
         """
         Calculate Precision@K and Recall@K.
-        
+
         A retrieved document is "relevant" if it contains keywords
         from the expected answer. This is a simplified relevance metric.
-        
+
         Precision@K = relevant_retrieved / total_retrieved
         Recall@K = relevant_retrieved / total_relevant (estimated)
-        
+
         Args:
             retrieved_texts: The text content of retrieved documents
             expected_answer: The expected correct answer
             k: The K value for metrics
-            
+
         Returns:
             Tuple of (precision, recall)
         """
@@ -249,26 +233,19 @@ class RAGEvaluator:
 
         return precision, recall
 
-    def _calculate_answer_relevance(
-        self,
-        generated_answer: str,
-        expected_answer: str
-    ) -> float:
+    def _calculate_answer_relevance(self, generated_answer: str, expected_answer: str) -> float:
         """
         Calculate how relevant the generated answer is to the expected answer.
-        
+
         Uses a simple keyword overlap score (Jaccard similarity on key terms).
         For production, you'd use an LLM-as-judge or embedding similarity.
-        
+
         Score range: 0.0 (completely irrelevant) to 1.0 (perfect match)
         """
+
         # Tokenize and normalize
         def extract_terms(text: str) -> set:
-            return set(
-                word.lower().strip(".,!?;:'\"()")
-                for word in text.split()
-                if len(word) > 3
-            )
+            return set(word.lower().strip(".,!?;:'\"()") for word in text.split() if len(word) > 3)
 
         generated_terms = extract_terms(generated_answer)
         expected_terms = extract_terms(expected_answer)
@@ -304,12 +281,12 @@ class RAGEvaluator:
     def run_latency_test(self, num_queries: int = 10) -> Dict[str, Any]:
         """
         Run a dedicated latency/performance test.
-        
+
         Sends multiple queries and measures response time statistics.
-        
+
         Args:
             num_queries: Number of queries to run
-            
+
         Returns:
             Dict with min, max, avg, p95 latency in milliseconds
         """

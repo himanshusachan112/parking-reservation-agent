@@ -40,7 +40,7 @@ for t, v in totals.items():
     print(f"  {t:10s} | {v['available']}/{v['total']} available")
 
 print("\n" + "=" * 60)
-print("  VECTOR DATABASE (ChromaDB)")
+print("  VECTOR DATABASE (Pinecone)")
 print("=" * 60)
 
 from src.database.vector_store import VectorStore

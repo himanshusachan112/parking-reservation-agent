@@ -12,6 +12,7 @@ These tests ensure the system protects user data.
 """
 
 import pytest
+
 from src.chatbot.guardrails import Guardrails
 
 

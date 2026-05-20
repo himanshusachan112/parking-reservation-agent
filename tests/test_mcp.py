@@ -19,26 +19,26 @@ Tests cover:
 """
 
 import os
-import pytest
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
-from src.mcp.mcp_server import (
-    mcp_app,
-    MCP_API_KEY,
-    APPROVED_FILE,
-    tool_write_reservation_to_file,
-    tool_read_approved_reservations,
-)
 from src.mcp.mcp_client import MCPClient
-
+from src.mcp.mcp_server import (
+    APPROVED_FILE,
+    MCP_API_KEY,
+    mcp_app,
+    tool_read_approved_reservations,
+    tool_write_reservation_to_file,
+)
 
 # ========================
 # MCP SERVER TESTS
 # ========================
+
 
 class TestMCPServer:
     """Tests for the MCP server endpoints."""
@@ -57,6 +57,7 @@ class TestMCPServer:
             self.temp_file.unlink()
         if Path(self.temp_dir).exists():
             import shutil
+
             shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_health_check(self):
@@ -187,6 +188,7 @@ class TestMCPServer:
 # MCP TOOL FUNCTION TESTS
 # ========================
 
+
 class TestMCPToolFunctions:
     """Tests for the tool implementation functions directly."""
 
@@ -197,18 +199,23 @@ class TestMCPToolFunctions:
     def teardown_method(self):
         if Path(self.temp_dir).exists():
             import shutil
+
             shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_write_creates_file_with_header(self):
         """First write should create file with header."""
-        with patch("src.mcp.mcp_server.APPROVED_FILE", self.temp_file), \
-             patch("src.mcp.mcp_server.DATA_DIR", Path(self.temp_dir)):
-            result = tool_write_reservation_to_file({
-                "name": "Himanshu Sachan",
-                "car_number": "UP121",
-                "reservation_period": "2026-05-10 09:00 - 2026-05-10 18:00",
-                "approval_time": "2026-05-11 10:00:00",
-            })
+        with (
+            patch("src.mcp.mcp_server.APPROVED_FILE", self.temp_file),
+            patch("src.mcp.mcp_server.DATA_DIR", Path(self.temp_dir)),
+        ):
+            result = tool_write_reservation_to_file(
+                {
+                    "name": "Himanshu Sachan",
+                    "car_number": "UP121",
+                    "reservation_period": "2026-05-10 09:00 - 2026-05-10 18:00",
+                    "approval_time": "2026-05-11 10:00:00",
+                }
+            )
 
         assert "Himanshu Sachan" in result
         content = self.temp_file.read_text()
@@ -217,18 +224,24 @@ class TestMCPToolFunctions:
 
     def test_write_appends_multiple_records(self):
         """Multiple writes should append, not overwrite."""
-        with patch("src.mcp.mcp_server.APPROVED_FILE", self.temp_file), \
-             patch("src.mcp.mcp_server.DATA_DIR", Path(self.temp_dir)):
-            tool_write_reservation_to_file({
-                "name": "User One",
-                "car_number": "AAA-111",
-                "reservation_period": "2026-05-10 09:00 - 2026-05-10 18:00",
-            })
-            tool_write_reservation_to_file({
-                "name": "User Two",
-                "car_number": "BBB-222",
-                "reservation_period": "2026-05-11 09:00 - 2026-05-11 18:00",
-            })
+        with (
+            patch("src.mcp.mcp_server.APPROVED_FILE", self.temp_file),
+            patch("src.mcp.mcp_server.DATA_DIR", Path(self.temp_dir)),
+        ):
+            tool_write_reservation_to_file(
+                {
+                    "name": "User One",
+                    "car_number": "AAA-111",
+                    "reservation_period": "2026-05-10 09:00 - 2026-05-10 18:00",
+                }
+            )
+            tool_write_reservation_to_file(
+                {
+                    "name": "User Two",
+                    "car_number": "BBB-222",
+                    "reservation_period": "2026-05-11 09:00 - 2026-05-11 18:00",
+                }
+            )
 
         content = self.temp_file.read_text()
         assert "User One | AAA-111" in content
@@ -257,6 +270,7 @@ class TestMCPToolFunctions:
 # MCP CLIENT TESTS
 # ========================
 
+
 class TestMCPClient:
     """Tests for the MCP client (with mocked HTTP calls)."""
 
@@ -272,6 +286,7 @@ class TestMCPClient:
     def teardown_method(self):
         if Path(self.temp_dir).exists():
             import shutil
+
             shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_fallback_write_when_server_down(self):

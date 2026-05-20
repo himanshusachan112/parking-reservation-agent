@@ -7,11 +7,12 @@ These tests verify that:
 3. Latency measurements work
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 from langchain_core.documents import Document
 
-from src.evaluation.evaluator import RAGEvaluator, EvaluationResult, EvaluationReport
+from src.evaluation.evaluator import EvaluationReport, EvaluationResult, RAGEvaluator
 
 
 class TestRAGEvaluator:
@@ -58,9 +59,7 @@ class TestRAGEvaluator:
         ]
         expected_answer = "The parking is open Monday to Friday 6:00 AM to 11:00 PM"
 
-        precision, recall = self.evaluator._calculate_retrieval_metrics(
-            retrieved_texts, expected_answer, k=3
-        )
+        precision, recall = self.evaluator._calculate_retrieval_metrics(retrieved_texts, expected_answer, k=3)
 
         # At least some documents should be relevant
         assert 0.0 <= precision <= 1.0
@@ -92,11 +91,7 @@ class TestRAGEvaluator:
             "Located at 123 Main Street downtown",
         ]
 
-        report = self.evaluator.run_evaluation(
-            questions=questions,
-            ground_truth=ground_truth,
-            k=3
-        )
+        report = self.evaluator.run_evaluation(questions=questions, ground_truth=ground_truth, k=3)
 
         assert report.total_questions == 2
         assert report.avg_total_time_ms >= 0

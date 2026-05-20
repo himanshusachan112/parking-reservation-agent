@@ -1,0 +1,66 @@
+# ============================================
+# Docker Ignore — ParkSmart
+# ============================================
+
+# Version control
+.git
+.gitignore
+
+# Python artifacts
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+*.egg-info
+*.egg
+dist/
+build/
+eggs/
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing & coverage
+.coverage
+htmlcov/
+.pytest_cache/
+coverage.xml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+!README.md
+*.pptx
+
+# Frontend (built separately)
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Terraform
+terraform/
+.terraform/
+
+# CI/CD
+.github/
+
+# Data files that are generated at runtime
+data/chroma_db/
+data/parking_dynamic.db
+data/approved_reservations.txt
+
+# Logs
+logs/
+*.log

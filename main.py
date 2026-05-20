@@ -59,7 +59,7 @@ def setup_databases():
     print(f"      Created {len(documents)} text chunks from parking_info.txt")
 
     # Step 2: Initialize vector store and add documents
-    print("\n[2/3] Initializing vector database (ChromaDB)...")
+    print("\n[2/3] Initializing vector database (Pinecone)...")
     vector_store = VectorStore()
 
     # Check if already populated
