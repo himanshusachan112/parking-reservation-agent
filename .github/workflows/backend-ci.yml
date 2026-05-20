@@ -91,8 +91,11 @@ jobs:
       - name: Validate .env.example exists
         run: test -f .env.example
 
+      - name: Verify spaCy model
+        run: python -c "import spacy; nlp = spacy.load('en_core_web_lg'); print('spaCy model loaded OK')"
+
       - name: Run tests with coverage
-        run: python -m pytest tests/ -v --tb=short --cov=src --cov-report=xml --cov-report=term-missing
+        run: python -m pytest tests/ -v --tb=long --cov=src --cov-report=xml --cov-report=term-missing
 
       - name: Upload coverage report
         if: always()
