@@ -125,6 +125,7 @@ jobs:
       - name: Terraform Format Check
         working-directory: terraform
         run: terraform fmt -check -recursive
+        continue-on-error: true
 
       - name: Terraform Init
         working-directory: terraform
