@@ -72,7 +72,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   sendMessage: async (content: string) => {
-    const { activeSessionId, sessions } = get();
+    const { activeSessionId } = get();
     let sessionId = activeSessionId;
 
     // Auto-create session if none active

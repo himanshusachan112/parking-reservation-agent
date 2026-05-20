@@ -10,6 +10,7 @@ on:
       - "requirements.txt"
       - "main.py"
       - "pyproject.toml"
+      - ".flake8"
       - ".github/workflows/backend-ci.yml"
   pull_request:
     branches: [main]
@@ -20,6 +21,10 @@ on:
       - "requirements.txt"
       - "main.py"
       - "pyproject.toml"
+
+env:
+  PINECONE_API_KEY: "test-key"
+  DIAL_API_KEY: "test-key"
 
 jobs:
   lint:
@@ -55,7 +60,7 @@ jobs:
 
       - name: Type check with mypy
         run: mypy src/ --ignore-missing-imports --no-strict-optional
-        continue-on-error: true  # Advisory — don't block CI on first run
+        continue-on-error: true
 
   test:
     name: Test Suite
@@ -87,11 +92,7 @@ jobs:
         run: test -f .env.example
 
       - name: Run tests with coverage
-        env:
-          PINECONE_API_KEY: "test-key"
-          DIAL_API_KEY: "test-key"
-        run: |
-          python -m pytest tests/ -v --tb=short --cov=src --cov-report=xml --cov-report=term-missing
+        run: python -m pytest tests/ -v --tb=short --cov=src --cov-report=xml --cov-report=term-missing
 
       - name: Upload coverage report
         if: always()
@@ -99,6 +100,7 @@ jobs:
         with:
           name: coverage-report
           path: coverage.xml
+          if-no-files-found: ignore
 
   validate-startup:
     name: Validate FastAPI Startup
@@ -127,17 +129,13 @@ jobs:
           python -m spacy download en_core_web_lg
 
       - name: Validate FastAPI app imports
-        env:
-          PINECONE_API_KEY: "test-key"
-          DIAL_API_KEY: "test-key"
         run: python -c "from src.api.server import app; print('FastAPI app loaded successfully')"
 
       - name: Smoke-test health endpoint
-        env:
-          PINECONE_API_KEY: "test-key"
-          DIAL_API_KEY: "test-key"
         run: |
           uvicorn src.api.server:app --host 0.0.0.0 --port 8000 &
-          sleep 5
-          curl -f http://localhost:8000/api/health || exit 1
-          kill %1
+          SERVER_PID=$!
+          sleep 8
+          curl -f http://localhost:8000/api/health
+          curl -f http://localhost:8000/api/health/detailed
+          kill $SERVER_PID

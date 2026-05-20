@@ -15,10 +15,16 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends gcc g++ && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy and install Python dependencies first (cache-friendly)
+# Create and use a virtualenv (portable across stages)
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy and install Python dependencies (cache-friendly layer)
 COPY requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt && \
-    python -c "import spacy; spacy.cli.download('en_core_web_lg')"
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Download spaCy model inside the venv
+RUN python -m spacy download en_core_web_lg
 
 # --------------- Stage 2: Runtime ---------------
 FROM python:3.11-slim AS runtime
@@ -28,12 +34,9 @@ RUN groupadd -r parksmart && useradd -r -g parksmart -d /app -s /sbin/nologin pa
 
 WORKDIR /app
 
-# Copy installed packages from builder
-COPY --from=builder /install /usr/local
-COPY --from=builder /root/.local /root/.local
-
-# Copy spaCy model data
-COPY --from=builder /usr/local/lib/python3.11/site-packages/en_core_web_lg /usr/local/lib/python3.11/site-packages/en_core_web_lg
+# Copy virtualenv from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application code
 COPY src/ ./src/

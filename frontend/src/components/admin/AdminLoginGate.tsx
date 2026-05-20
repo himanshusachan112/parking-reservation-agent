@@ -28,7 +28,7 @@ export function AdminLoginGate({ children }: { children: React.ReactNode }) {
         useAuthStore.setState({ isAuthenticated: true });
       }
     }
-    setHydrated(true);
+    requestAnimationFrame(() => setHydrated(true));
   }, []);
 
   const handleSubmit = async (e: FormEvent) => {
