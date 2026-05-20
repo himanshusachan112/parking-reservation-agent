@@ -12,10 +12,10 @@ provider "render" {
 
 # ---- Render Backend Web Service ----
 resource "render_web_service" "backend" {
-  name        = var.backend_name
-  region      = var.backend_region
-  plan        = var.backend_plan
-  runtime     = "python"
+  name    = var.backend_name
+  region  = var.backend_region
+  plan    = var.backend_plan
+  runtime = "python"
 
   # Build configuration
   build_command = "pip install -r requirements.txt && python -m spacy download en_core_web_lg && python main.py --setup"

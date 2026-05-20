@@ -10,6 +10,7 @@ pinecone-client>=5.0.0
 
 # Embeddings (local - no API key needed)
 sentence-transformers>=2.2.0
+langchain-huggingface>=0.1.0
 
 # Retry handling
 tenacity>=8.0.0
