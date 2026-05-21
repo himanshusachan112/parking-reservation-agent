@@ -1,6 +1,6 @@
 "use client";
 
-import { PanelLeftOpen, CalendarPlus } from "lucide-react";
+import { PanelLeftOpen, CalendarPlus, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
@@ -34,23 +34,23 @@ export default function ChatPage() {
 
   return (
     <ErrorBoundary>
-      <div className="flex flex-1 h-[calc(100vh-3.5rem)]">
-        {/* Desktop sidebar */}
-        <aside className="hidden md:flex w-64 border-r bg-card/50 backdrop-blur-sm flex-col">
+      <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden">
+        {/* Desktop sidebar — fixed, independent scroll */}
+        <aside className="hidden md:flex w-72 shrink-0 border-r bg-card/60 backdrop-blur-xl flex-col h-full overflow-hidden">
           <ChatSidebar />
         </aside>
 
-        {/* Mobile sidebar */}
+        {/* Mobile sidebar drawer */}
         <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
           <SheetContent side="left" className="w-72 p-0">
             <ChatSidebar />
           </SheetContent>
         </Sheet>
 
-        {/* Main chat area */}
-        <div className="flex flex-1 flex-col min-w-0">
+        {/* Main chat area — isolated scroll */}
+        <div className="flex flex-1 flex-col min-w-0 h-full overflow-hidden">
           {/* Chat header */}
-          <div className="flex items-center gap-2 border-b px-3 py-2">
+          <div className="flex items-center gap-2 border-b bg-background/80 backdrop-blur-xl px-4 py-2.5 shrink-0 z-10">
             <Button
               variant="ghost"
               size="icon"
@@ -59,11 +59,19 @@ export default function ChatPage() {
             >
               <PanelLeftOpen className="h-4 w-4" />
             </Button>
-            <h2 className="text-sm font-medium flex-1">ParkSmart AI</h2>
+            <div className="flex items-center gap-2 flex-1">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-sm">
+                <Sparkles className="h-3.5 w-3.5 text-white" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold leading-none">ParkSmart AI</h2>
+                <p className="text-[10px] text-muted-foreground leading-none mt-0.5">Parking Assistant</p>
+              </div>
+            </div>
             <Button
               variant="outline"
               size="sm"
-              className="gap-1.5 text-xs"
+              className="gap-1.5 text-xs rounded-lg"
               onClick={() => setReservationModalOpen(true)}
             >
               <CalendarPlus className="h-3.5 w-3.5" />
@@ -71,10 +79,10 @@ export default function ChatPage() {
             </Button>
           </div>
 
-          {/* Messages */}
+          {/* Messages — scrollable */}
           <ChatWindow />
 
-          {/* Input */}
+          {/* Input — sticky bottom */}
           <ChatInput onSend={sendMessage} disabled={isLoading} />
         </div>
       </div>

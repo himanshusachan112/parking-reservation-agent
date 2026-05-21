@@ -117,6 +117,7 @@ def user_interaction_node(state: GraphState) -> Dict[str, Any]:
         Updated state with bot_response and conversation_phase
     """
     user_message = state.get("user_message", "")
+    session_id = state.get("session_id")
 
     if not user_message:
         return {
@@ -124,12 +125,12 @@ def user_interaction_node(state: GraphState) -> Dict[str, Any]:
             "conversation_phase": PipelinePhase.USER_INTERACTION.value,
         }
 
-    # Pass message to the chatbot
-    response = _chatbot.chat(user_message)
+    # Pass message to the chatbot with session isolation
+    response = _chatbot.chat(user_message, session_id=session_id)
 
     # Check if the chatbot just completed a booking (state went back to IDLE
     # AND the response contains a reservation ID)
-    is_booking = _chatbot.state != ConversationState.IDLE
+    is_booking = _chatbot.get_session_state(session_id) != ConversationState.IDLE.value
     booking_just_completed = "reservation request has been submitted" in response.lower() or "id: #" in response.lower()
 
     if booking_just_completed:

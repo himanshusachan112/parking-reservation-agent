@@ -69,6 +69,7 @@ def mock_chatbot():
     bot = MagicMock()
     bot.state = ConversationState.IDLE
     bot.chat = MagicMock(return_value="Hello! I'm the ParkSmart assistant.")
+    bot.get_session_state = MagicMock(return_value=ConversationState.IDLE.value)
     return bot
 
 
@@ -220,7 +221,7 @@ class TestUserInteractionNode:
         result = user_interaction_node(base_state)
         assert result["conversation_phase"] == PipelinePhase.USER_INTERACTION.value
         assert "ParkSmart" in result["bot_response"]
-        mock_chatbot.chat.assert_called_with("Where is the parking?")
+        mock_chatbot.chat.assert_called_with("Where is the parking?", session_id=None)
 
     def test_booking_completed(self, initialized_nodes, base_state, mock_chatbot):
         """Booking completion triggers BOOKING_COMPLETE phase."""
@@ -233,6 +234,7 @@ class TestUserInteractionNode:
             "✅ Your reservation request has been submitted! (ID: #5)\n" "An administrator has been notified."
         )
         mock_chatbot.state = ConversationState.IDLE  # Back to idle after booking
+        mock_chatbot.get_session_state.return_value = ConversationState.IDLE.value
 
         base_state["user_message"] = "yes"
 
@@ -248,6 +250,7 @@ class TestUserInteractionNode:
 
         mock_chatbot.chat.return_value = "Please provide your email address:"
         mock_chatbot.state = ConversationState.COLLECTING_EMAIL
+        mock_chatbot.get_session_state.return_value = ConversationState.COLLECTING_EMAIL.value
         base_state["user_message"] = "John Smith"
 
         result = user_interaction_node(base_state)

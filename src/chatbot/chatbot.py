@@ -105,13 +105,21 @@ class ParkingChatbot:
     """
     Main chatbot class that manages the full conversation.
 
-    This is the primary interface - call chatbot.chat(message) to interact.
+    This is the primary interface - call chatbot.chat(message, session_id) to interact.
 
     It handles:
     - General Q&A (using RAG chain)
     - Reservation flow (state machine)
     - Guardrails (PII filtering)
+    - Session isolation (per-session state)
     """
+
+    # Dataclass to hold per-session conversation context
+    @dataclass
+    class _SessionContext:
+        state: ConversationState = ConversationState.IDLE
+        reservation_data: 'ReservationData' = field(default_factory=lambda: ReservationData())
+        chat_history: list = field(default_factory=list)
 
     def __init__(self):
         """Initialize all components of the chatbot."""
@@ -134,38 +142,62 @@ class ParkingChatbot:
         # Initialize email service (for admin notifications)
         self.email_service = EmailService()
 
-        # Conversation state tracking
-        self.state = ConversationState.IDLE
-        self.reservation_data = ReservationData()
+        # Per-session state storage (replaces old global state/reservation_data)
+        self._sessions: Dict[str, ParkingChatbot._SessionContext] = {}
 
-    def chat(self, user_message: str) -> str:
+        # Legacy fallback: default session for CLI / non-session callers
+        self._default_session = "default"
+        self._sessions[self._default_session] = self._SessionContext()
+
+    # ── Property shims for backward-compat with nodes.py ──
+
+    @property
+    def state(self) -> ConversationState:
+        """Return state of the default session (backward compatibility)."""
+        return self._sessions[self._default_session].state
+
+    @state.setter
+    def state(self, value: ConversationState):
+        self._sessions[self._default_session].state = value
+
+    @property
+    def reservation_data(self) -> 'ReservationData':
+        return self._sessions[self._default_session].reservation_data
+
+    @reservation_data.setter
+    def reservation_data(self, value: 'ReservationData'):
+        self._sessions[self._default_session].reservation_data = value
+
+    def _ctx(self, session_id: str | None = None) -> '_SessionContext':
+        """Get or create the context for a session."""
+        sid = session_id or self._default_session
+        if sid not in self._sessions:
+            self._sessions[sid] = self._SessionContext()
+        return self._sessions[sid]
+
+    def chat(self, user_message: str, session_id: str | None = None) -> str:
         """
         Process a user message and return a response.
 
-        This is the main entry point for the chatbot.
-
-        Flow:
-        1. Check guardrails on input (block if sensitive data detected)
-        2. Check if we're in a reservation flow → handle state
-        3. Otherwise, detect intent and respond accordingly
-        4. Check guardrails on output before returning
-
         Args:
             user_message: The user's input text
+            session_id: Optional session ID for multi-session isolation
 
         Returns:
             The chatbot's response string
         """
+        ctx = self._ctx(session_id)
+
         # Step 1: Apply input guardrails
         input_check = self.guardrails.check_input(user_message)
         if input_check["blocked"]:
             return input_check["message"]
 
         # Step 2: Handle based on current state
-        if self.state != ConversationState.IDLE:
-            response = self._handle_reservation_flow(user_message)
+        if ctx.state != ConversationState.IDLE:
+            response = self._handle_reservation_flow(user_message, ctx)
         else:
-            response = self._handle_general_query(user_message)
+            response = self._handle_general_query(user_message, ctx)
 
         # Step 3: Apply output guardrails
         filtered_response = self.guardrails.filter_output(response)
@@ -175,7 +207,7 @@ class ParkingChatbot:
     # Marker that the LLM returns when it detects a booking intent
     BOOKING_INTENT_MARKER = "INTENT:BOOKING"
 
-    def _handle_general_query(self, message: str) -> str:
+    def _handle_general_query(self, message: str, ctx: '_SessionContext') -> str:
         """
         Handle a message when we're in IDLE state.
 
@@ -194,15 +226,15 @@ class ParkingChatbot:
 
         # Check if the LLM detected a booking intent
         if self.BOOKING_INTENT_MARKER in response.strip().upper():
-            return self._start_reservation()
+            return self._start_reservation(ctx)
 
         # Otherwise, return the LLM's answer directly
         return response
 
-    def _start_reservation(self) -> str:
+    def _start_reservation(self, ctx: '_SessionContext') -> str:
         """Begin the reservation process by asking for the first piece of info."""
-        self.state = ConversationState.COLLECTING_NAME
-        self.reservation_data = ReservationData()  # Reset any previous data
+        ctx.state = ConversationState.COLLECTING_NAME
+        ctx.reservation_data = ReservationData()  # Reset any previous data
 
         return (
             "I'd be happy to help you reserve a parking space! 🚗\n\n"
@@ -210,7 +242,7 @@ class ParkingChatbot:
             "**Please provide your full name (first name and last name):**"
         )
 
-    def _handle_reservation_flow(self, message: str) -> str:
+    def _handle_reservation_flow(self, message: str, ctx: '_SessionContext') -> str:
         """
         Handle messages during the reservation flow (state machine).
 
@@ -223,46 +255,49 @@ class ParkingChatbot:
         - CONFIRMING → expects yes/no
         """
         # Allow user to cancel at any point
-        if message.lower() in ["cancel", "stop", "quit", "exit"]:
-            self.state = ConversationState.IDLE
-            self.reservation_data = ReservationData()
-            return "Reservation cancelled. How else can I help you?"
+        if message.lower() in ["cancel", "stop", "quit", "exit", "cancel booking"]:
+            ctx.state = ConversationState.IDLE
+            ctx.reservation_data = ReservationData()
+            return (
+                "Booking process cancelled successfully. ✓\n\n"
+                "How else can I help you with parking services?"
+            )
 
-        if self.state == ConversationState.COLLECTING_NAME:
-            return self._collect_name(message)
-        elif self.state == ConversationState.COLLECTING_EMAIL:
-            return self._collect_email(message)
-        elif self.state == ConversationState.COLLECTING_CAR:
-            return self._collect_car(message)
-        elif self.state == ConversationState.COLLECTING_SPACE_TYPE:
-            return self._collect_space_type(message)
-        elif self.state == ConversationState.COLLECTING_START:
-            return self._collect_start_time(message)
-        elif self.state == ConversationState.COLLECTING_END:
-            return self._collect_end_time(message)
-        elif self.state == ConversationState.CONFIRMING:
-            return self._handle_confirmation(message)
+        if ctx.state == ConversationState.COLLECTING_NAME:
+            return self._collect_name(message, ctx)
+        elif ctx.state == ConversationState.COLLECTING_EMAIL:
+            return self._collect_email(message, ctx)
+        elif ctx.state == ConversationState.COLLECTING_CAR:
+            return self._collect_car(message, ctx)
+        elif ctx.state == ConversationState.COLLECTING_SPACE_TYPE:
+            return self._collect_space_type(message, ctx)
+        elif ctx.state == ConversationState.COLLECTING_START:
+            return self._collect_start_time(message, ctx)
+        elif ctx.state == ConversationState.COLLECTING_END:
+            return self._collect_end_time(message, ctx)
+        elif ctx.state == ConversationState.CONFIRMING:
+            return self._handle_confirmation(message, ctx)
 
         # Shouldn't reach here, but just in case
-        self.state = ConversationState.IDLE
+        ctx.state = ConversationState.IDLE
         return "Something went wrong. Let's start over. How can I help you?"
 
-    def _collect_name(self, message: str) -> str:
+    def _collect_name(self, message: str, ctx: '_SessionContext') -> str:
         """Process the user's name input."""
         parts = message.strip().split()
         if len(parts) < 2:
             return "Please provide both your **first name** and **last name** (e.g., 'John Smith'):"
 
-        self.reservation_data.first_name = parts[0].title()
-        self.reservation_data.last_name = " ".join(parts[1:]).title()
-        self.state = ConversationState.COLLECTING_EMAIL
+        ctx.reservation_data.first_name = parts[0].title()
+        ctx.reservation_data.last_name = " ".join(parts[1:]).title()
+        ctx.state = ConversationState.COLLECTING_EMAIL
 
         return (
-            f"Thank you, {self.reservation_data.first_name}! ✓\n\n"
+            f"Thank you, {ctx.reservation_data.first_name}! ✓\n\n"
             f"**Please provide your email address** (for reservation notifications):"
         )
 
-    def _collect_email(self, message: str) -> str:
+    def _collect_email(self, message: str, ctx: '_SessionContext') -> str:
         """Process the user's email input."""
         import re
 
@@ -271,21 +306,21 @@ class ParkingChatbot:
         if not re.match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", email):
             return "That doesn't look like a valid email address. Please try again (e.g., 'john@example.com'):"
 
-        self.reservation_data.email = email
-        self.state = ConversationState.COLLECTING_CAR
+        ctx.reservation_data.email = email
+        ctx.state = ConversationState.COLLECTING_CAR
 
         return (
             f"Email: {mask_email(email)} ✓\n\n" f"**Please provide your vehicle registration number (license plate):**"
         )
 
-    def _collect_car(self, message: str) -> str:
+    def _collect_car(self, message: str, ctx: '_SessionContext') -> str:
         """Process the vehicle registration number."""
         car_number = message.strip().upper()
         if len(car_number) < 2:
             return "That doesn't look like a valid registration number. Please try again:"
 
-        self.reservation_data.car_number = car_number
-        self.state = ConversationState.COLLECTING_SPACE_TYPE
+        ctx.reservation_data.car_number = car_number
+        ctx.state = ConversationState.COLLECTING_SPACE_TYPE
 
         return (
             f"Vehicle registered: {car_number} ✓\n\n"
@@ -297,7 +332,7 @@ class ParkingChatbot:
             "Please type the number or name of your choice:"
         )
 
-    def _collect_space_type(self, message: str) -> str:
+    def _collect_space_type(self, message: str, ctx: '_SessionContext') -> str:
         """Process the space type selection."""
         type_mapping = {
             "1": "standard",
@@ -322,8 +357,8 @@ class ParkingChatbot:
                 "  1. Standard\n  2. Large\n  3. Electric Vehicle\n  4. VIP"
             )
 
-        self.reservation_data.space_type = space_type
-        self.state = ConversationState.COLLECTING_START
+        ctx.reservation_data.space_type = space_type
+        ctx.state = ConversationState.COLLECTING_START
 
         return (
             f"Space type: {space_type.upper()} ✓\n\n"
@@ -331,7 +366,7 @@ class ParkingChatbot:
             "Please provide date and time (e.g., '2026-05-10 09:00'):"
         )
 
-    def _collect_start_time(self, message: str) -> str:
+    def _collect_start_time(self, message: str, ctx: '_SessionContext') -> str:
         """Process the start date/time."""
         # Basic validation - try to parse the date
         try:
@@ -339,7 +374,7 @@ class ParkingChatbot:
             for fmt in ["%Y-%m-%d %H:%M", "%d/%m/%Y %H:%M", "%m/%d/%Y %H:%M", "%Y-%m-%d"]:
                 try:
                     parsed = datetime.strptime(message.strip(), fmt)
-                    self.reservation_data.start_datetime = parsed.strftime("%Y-%m-%d %H:%M")
+                    ctx.reservation_data.start_datetime = parsed.strftime("%Y-%m-%d %H:%M")
                     break
                 except ValueError:
                     continue
@@ -351,21 +386,21 @@ class ParkingChatbot:
                 "**YYYY-MM-DD HH:MM** (e.g., '2026-05-10 09:00')"
             )
 
-        self.state = ConversationState.COLLECTING_END
+        ctx.state = ConversationState.COLLECTING_END
 
         return (
-            f"Start time: {self.reservation_data.start_datetime} ✓\n\n"
+            f"Start time: {ctx.reservation_data.start_datetime} ✓\n\n"
             "**When should the reservation end?**\n"
             "Please provide date and time (e.g., '2026-05-10 18:00'):"
         )
 
-    def _collect_end_time(self, message: str) -> str:
+    def _collect_end_time(self, message: str, ctx: '_SessionContext') -> str:
         """Process the end date/time."""
         try:
             for fmt in ["%Y-%m-%d %H:%M", "%d/%m/%Y %H:%M", "%m/%d/%Y %H:%M", "%Y-%m-%d"]:
                 try:
                     parsed = datetime.strptime(message.strip(), fmt)
-                    self.reservation_data.end_datetime = parsed.strftime("%Y-%m-%d %H:%M")
+                    ctx.reservation_data.end_datetime = parsed.strftime("%Y-%m-%d %H:%M")
                     break
                 except ValueError:
                     continue
@@ -378,21 +413,20 @@ class ParkingChatbot:
             )
 
         # Move to confirmation
-        self.state = ConversationState.CONFIRMING
+        ctx.state = ConversationState.CONFIRMING
 
         return (
-            f"End time: {self.reservation_data.end_datetime} ✓\n\n"
-            f"{self.reservation_data.summary()}\n\n"
+            f"End time: {ctx.reservation_data.end_datetime} ✓\n\n"
+            f"{ctx.reservation_data.summary()}\n\n"
             "**Is this correct? (yes/no)**"
         )
 
-    def _handle_confirmation(self, message: str) -> str:
+    def _handle_confirmation(self, message: str, ctx: '_SessionContext') -> str:
         """Handle the user's confirmation of reservation details."""
         if message.lower() in ["yes", "y", "correct", "confirm", "ok"]:
             # Reservation confirmed — save to database as 'pending'
-            # The admin agent (Stage 2) will pick this up for review
-            self.state = ConversationState.IDLE
-            reservation_info = self.reservation_data.to_dict()
+            ctx.state = ConversationState.IDLE
+            reservation_info = ctx.reservation_data.to_dict()
 
             try:
                 reservation_id = self.sql_store.save_reservation(reservation_info)
@@ -418,8 +452,8 @@ class ParkingChatbot:
                 )
         elif message.lower() in ["no", "n", "wrong", "restart"]:
             # Start over
-            self.state = ConversationState.IDLE
-            self.reservation_data = ReservationData()
+            ctx.state = ConversationState.IDLE
+            ctx.reservation_data = ReservationData()
             return (
                 "No problem! Let's start over.\n"
                 "Would you like to make a new reservation, or is there something else I can help with?"
@@ -427,17 +461,66 @@ class ParkingChatbot:
         else:
             return "Please answer **yes** to confirm or **no** to start over."
 
-    def get_reservation_data(self) -> Optional[Dict[str, Any]]:
+    def get_reservation_data(self, session_id: str | None = None) -> Optional[Dict[str, Any]]:
         """
         Get the current reservation data (for external processing).
         Returns None if no complete reservation exists.
         """
-        if self.reservation_data.is_complete():
-            return self.reservation_data.to_dict()
+        ctx = self._ctx(session_id)
+        if ctx.reservation_data.is_complete():
+            return ctx.reservation_data.to_dict()
         return None
 
-    def reset(self):
-        """Reset the chatbot state completely."""
-        self.state = ConversationState.IDLE
-        self.reservation_data = ReservationData()
+    def reset(self, session_id: str | None = None):
+        """Reset the chatbot state for a given session (or default)."""
+        sid = session_id or self._default_session
+        self._sessions[sid] = self._SessionContext()
         self.rag_chain.clear_history()
+
+    def reset_session(self, session_id: str):
+        """Fully reset a specific session's state."""
+        self._sessions[session_id] = self._SessionContext()
+
+    def cancel_booking(self, session_id: str | None = None) -> str:
+        """Cancel an in-progress booking for the given session."""
+        ctx = self._ctx(session_id)
+        if ctx.state == ConversationState.IDLE:
+            return "There is no active booking to cancel."
+        ctx.state = ConversationState.IDLE
+        ctx.reservation_data = ReservationData()
+        return "Booking process cancelled successfully. ✓\n\nHow else can I help you with parking services?"
+
+    def get_session_state(self, session_id: str | None = None) -> str:
+        """Return the current conversation state name for a session."""
+        return self._ctx(session_id).state.value
+
+    def get_booking_progress(self, session_id: str | None = None) -> Dict[str, Any]:
+        """Return booking progress details for the frontend progress indicator."""
+        ctx = self._ctx(session_id)
+        if ctx.state == ConversationState.IDLE:
+            return {"is_booking": False, "steps": [], "current_step": -1}
+
+        steps = [
+            {"label": "Name", "field": "name", "done": bool(ctx.reservation_data.first_name)},
+            {"label": "Email", "field": "email", "done": bool(ctx.reservation_data.email)},
+            {"label": "Vehicle", "field": "car_number", "done": bool(ctx.reservation_data.car_number)},
+            {"label": "Space Type", "field": "space_type", "done": bool(ctx.reservation_data.space_type)},
+            {"label": "Start Time", "field": "start_datetime", "done": bool(ctx.reservation_data.start_datetime)},
+            {"label": "End Time", "field": "end_datetime", "done": bool(ctx.reservation_data.end_datetime)},
+            {"label": "Confirm", "field": "confirmation", "done": False},
+        ]
+
+        # Determine current step index
+        current_step = 0
+        for i, step in enumerate(steps):
+            if not step["done"]:
+                current_step = i
+                break
+        else:
+            current_step = len(steps) - 1  # At confirmation
+
+        return {
+            "is_booking": True,
+            "steps": steps,
+            "current_step": current_step,
+        }

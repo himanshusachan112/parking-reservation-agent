@@ -132,26 +132,37 @@ sql_store.initialize_default_data()
 # Email notification service
 email_service = EmailService()
 
-# Chatbot pipeline (lazy-initialized)
+# Chatbot pipeline (lazy-initialized, per-session)
 _pipeline = None
-_pipeline_state = None
+_sessions: dict[str, dict] = {}  # session_id -> pipeline_state
 
 
 def _get_pipeline():
-    """Lazy-init the LangGraph pipeline and return (pipeline, state)."""
-    global _pipeline, _pipeline_state
+    """Lazy-init the shared LangGraph pipeline."""
+    global _pipeline
     if _pipeline is None:
-        from src.graph.pipeline import create_initial_state, create_pipeline
+        from src.graph.pipeline import create_pipeline
 
         _pipeline = create_pipeline(sql_store=sql_store, email_service=email_service)
-        _pipeline_state = create_initial_state()
-    return _pipeline, _pipeline_state
+    return _pipeline
+
+
+def _get_session_state(session_id: str) -> dict:
+    """Get or create pipeline state for a session."""
+    from src.graph.pipeline import create_initial_state
+
+    if session_id not in _sessions:
+        state = create_initial_state()
+        state["session_id"] = session_id
+        _sessions[session_id] = state
+    return _sessions[session_id]
 
 
 class ChatRequest(BaseModel):
     """JSON body for a chat message."""
 
     message: str = Field(..., json_schema_extra={"example": "What are your parking rates?"})
+    session_id: Optional[str] = Field(None, json_schema_extra={"example": "abc-123"})
 
 
 class ChatResponse(BaseModel):
@@ -160,6 +171,8 @@ class ChatResponse(BaseModel):
     response: str
     is_booking_flow: bool = False
     reservation_id: Optional[int] = None
+    session_id: Optional[str] = None
+    booking_progress: Optional[dict] = None
 
 
 # ========================
@@ -172,23 +185,90 @@ def chat(request: ChatRequest):
     """
     Send a message to the ParkSmart chatbot and receive a response.
     Supports general Q&A and the full reservation booking flow.
+    Each session_id gets its own isolated conversation state.
     """
+    import uuid
+
     from src.graph.pipeline import run_user_message
 
-    pipeline, state = _get_pipeline()
+    session_id = request.session_id or str(uuid.uuid4())
+    pipeline = _get_pipeline()
+    state = _get_session_state(session_id)
 
     try:
-        global _pipeline_state
-        result = run_user_message(pipeline, request.message, _pipeline_state)
-        _pipeline_state = result
+        # Ensure session_id flows through pipeline state
+        state["session_id"] = session_id
+        result = run_user_message(pipeline, request.message, state)
+        _sessions[session_id] = result
+
+        # Get booking progress from the chatbot's session state
+        from src.graph.nodes import _chatbot
+
+        booking_progress = None
+        if _chatbot:
+            booking_progress = _chatbot.get_booking_progress(session_id)
 
         return ChatResponse(
             response=result.get("bot_response", "Sorry, I couldn't process your request."),
             is_booking_flow=result.get("is_booking_flow", False),
             reservation_id=result.get("reservation_id") or None,
+            session_id=session_id,
+            booking_progress=booking_progress,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chat processing failed: {str(e)}")
+
+
+@app.post("/api/chat/reset", response_model=StatusResponse)
+def chat_reset(session_id: Optional[str] = None):
+    """
+    Reset conversation state for a session.
+    If session_id is provided, resets that session (pipeline + chatbot).
+    If not provided, creates a fresh session.
+    """
+    from src.graph.nodes import _chatbot
+
+    if session_id and session_id in _sessions:
+        del _sessions[session_id]
+    # Also reset the chatbot's internal session state
+    if session_id and _chatbot:
+        _chatbot.reset_session(session_id)
+    return StatusResponse(success=True, message="Chat session reset successfully")
+
+
+@app.post("/api/chat/cancel-booking", response_model=ChatResponse)
+def cancel_booking(session_id: Optional[str] = None):
+    """Cancel an in-progress booking for the given session."""
+    from src.graph.nodes import _chatbot
+
+    if not _chatbot:
+        raise HTTPException(status_code=500, detail="Chatbot not initialized")
+
+    sid = session_id or "default"
+    message = _chatbot.cancel_booking(sid)
+    booking_progress = _chatbot.get_booking_progress(sid)
+
+    # Update pipeline state if it exists
+    if sid in _sessions:
+        _sessions[sid]["is_booking_flow"] = False
+
+    return ChatResponse(
+        response=message,
+        is_booking_flow=False,
+        session_id=sid,
+        booking_progress=booking_progress,
+    )
+
+
+@app.get("/api/chat/sessions")
+def chat_sessions():
+    """List active chat session IDs."""
+    return {
+        "sessions": [
+            {"session_id": sid, "phase": state.get("conversation_phase", "unknown")}
+            for sid, state in _sessions.items()
+        ]
+    }
 
 
 # ========================

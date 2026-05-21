@@ -10,6 +10,7 @@ export interface ChatMessage {
   isStreaming?: boolean;
   reservationId?: number | null;
   isBookingFlow?: boolean;
+  suggestions?: string[];
 }
 
 export interface ChatSession {
@@ -18,16 +19,32 @@ export interface ChatSession {
   lastMessage: string;
   timestamp: Date;
   messages: ChatMessage[];
+  backendSessionId?: string;
 }
 
 export interface ChatRequest {
   message: string;
+  session_id?: string;
+}
+
+export interface BookingStep {
+  label: string;
+  field: string;
+  done: boolean;
+}
+
+export interface BookingProgress {
+  is_booking: boolean;
+  steps: BookingStep[];
+  current_step: number;
 }
 
 export interface ChatResponse {
   response: string;
   is_booking_flow: boolean;
   reservation_id: number | null;
+  session_id?: string;
+  booking_progress?: BookingProgress | null;
 }
 
 // ════════════════════════════════════════

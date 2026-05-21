@@ -76,6 +76,7 @@ class GraphState(TypedDict, total=False):
         is_booking_flow: True if chatbot is currently collecting reservation data
         needs_admin_input: True when graph is waiting for admin to act
         admin_input: The admin's command (e.g., "approve 1")
+        session_id: Session identifier for multi-session isolation
     """
 
     user_message: str
@@ -92,3 +93,4 @@ class GraphState(TypedDict, total=False):
     is_booking_flow: bool
     needs_admin_input: bool
     admin_input: str
+    session_id: str
