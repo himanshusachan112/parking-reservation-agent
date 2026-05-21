@@ -320,12 +320,14 @@ class ParkingChatbot:
         ctx.state = ConversationState.COLLECTING_SPACE_TYPE
 
         return (
-            f"Vehicle registered: {car_number} ✓\n\n"
+            f"Vehicle registered: {car_number} \u2713\n\n"
             "**What type of parking space do you need?**\n"
             "  1. Standard (sedans, hatchbacks, small SUVs)\n"
-            "  2. Large (large SUVs, pickup trucks, vans)\n"
-            "  3. Electric Vehicle (with charging)\n"
-            "  4. VIP (premium, covered spot)\n\n"
+            "  2. Large Vehicle (large SUVs, pickup trucks, vans)\n"
+            "  3. EV Charging (with Level 2 + fast charging)\n"
+            "  4. VIP Premium (premium covered spot, valet)\n"
+            "  5. Disabled / Accessible (wheelchair accessible, near elevator)\n"
+            "  6. Bike / 2-Wheeler (covered bike parking, helmet lockers)\n\n"
             "Please type the number or name of your choice:"
         )
 
@@ -336,13 +338,29 @@ class ParkingChatbot:
             "standard": "standard",
             "2": "large",
             "large": "large",
+            "large vehicle": "large",
             "3": "ev",
             "ev": "ev",
             "electric": "ev",
             "electric vehicle": "ev",
+            "ev charging": "ev",
+            "evc": "ev",
             "4": "vip",
             "vip": "vip",
+            "vip premium": "vip",
             "premium": "vip",
+            "5": "disabled",
+            "disabled": "disabled",
+            "accessible": "disabled",
+            "disabled accessible": "disabled",
+            "wheelchair": "disabled",
+            "6": "bike",
+            "bike": "bike",
+            "two wheeler": "bike",
+            "2 wheeler": "bike",
+            "2-wheeler": "bike",
+            "motorcycle": "bike",
+            "scooter": "bike",
         }
 
         choice = message.strip().lower()
@@ -351,7 +369,8 @@ class ParkingChatbot:
         if not space_type:
             return (
                 "I didn't understand that choice. Please select:\n"
-                "  1. Standard\n  2. Large\n  3. Electric Vehicle\n  4. VIP"
+                "  1. Standard\n  2. Large Vehicle\n  3. EV Charging\n  4. VIP Premium\n"
+                "  5. Disabled / Accessible\n  6. Bike / 2-Wheeler"
             )
 
         ctx.reservation_data.space_type = space_type

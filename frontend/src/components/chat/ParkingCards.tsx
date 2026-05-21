@@ -18,7 +18,8 @@ import { useEffect, useState, useCallback } from "react";
 
 // Shape returned by GET /api/parking/types
 interface ParkingTypeAPI {
-  id: string;
+  id: string;   // same as slug (e.g. "standard")
+  slug: string;
   name: string;
   description: string;
   hourly_price: number;
@@ -82,8 +83,8 @@ const TYPE_META: Record<
   },
 };
 
-// Display-order for the 4 primary types shown in the chat
-const PRIMARY_TYPES = ["standard", "large", "ev", "vip"];
+// Display-order metadata for all known parking types
+const ALL_TYPES_ORDER = ["standard", "large", "ev", "vip", "disabled", "bike"];
 
 /** Colour-coded slot indicator based on availability % */
 function SlotBadge({
@@ -134,27 +135,39 @@ export function ParkingCards({ interactive = true }: ParkingCardsProps) {
 
   const [types, setTypes] = useState<ParkingTypeAPI[]>([]);
   const [fetchError, setFetchError] = useState(false);
+  const [hasFetched, setHasFetched] = useState(false);
 
   const fetchTypes = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/parking/types`, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      const ordered: ParkingTypeAPI[] = PRIMARY_TYPES
-        .map((id) => (data.types as ParkingTypeAPI[]).find((t) => t.id === id))
-        .filter(Boolean) as ParkingTypeAPI[];
-      setTypes(ordered);
+      const allTypes: ParkingTypeAPI[] = data.types ?? [];
+      // Sort by TYPE_META order; unknown types append at end
+      const sorted = [...allTypes].sort((a, b) => {
+        const ia = ALL_TYPES_ORDER.indexOf(a.id ?? a.slug);
+        const ib = ALL_TYPES_ORDER.indexOf(b.id ?? b.slug);
+        return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+      });
+      setTypes(sorted.length > 0 ? sorted : allTypes);
       setFetchError(false);
     } catch {
       setFetchError(true);
+    } finally {
+      setHasFetched(true);
     }
   }, []);
 
   useEffect(() => {
     fetchTypes();
-    // Poll every 30 s for real-time slot updates
-    const timer = setInterval(fetchTypes, 30_000);
-    return () => clearInterval(timer);
+    // Poll every 15 s for real-time slot updates
+    const timer = setInterval(fetchTypes, 15_000);
+    // Immediate refresh when admin approves / rejects a reservation
+    window.addEventListener("parksmart:slot-stats-refresh", fetchTypes);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("parksmart:slot-stats-refresh", fetchTypes);
+    };
   }, [fetchTypes]);
 
   const handleSelect = (type: ParkingTypeAPI, number: number) => {
@@ -162,11 +175,11 @@ export function ParkingCards({ interactive = true }: ParkingCardsProps) {
     sendMessage(number.toString());
   };
 
-  // Skeleton while loading
-  if (types.length === 0 && !fetchError) {
+  // Skeleton while the first fetch is in-flight
+  if (!hasFetched && !fetchError) {
     return (
-      <div className="space-y-2.5 mt-2">
-        {Array.from({ length: 4 }).map((_, i) => (
+      <div className="space-y-2.5 mt-2" aria-label="Loading parking types">
+        {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="h-20 rounded-xl bg-muted animate-pulse" />
         ))}
       </div>
@@ -179,13 +192,15 @@ export function ParkingCards({ interactive = true }: ParkingCardsProps) {
       <div className="space-y-2 mt-2 p-3 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
         <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 text-xs font-medium">
           <RefreshCw className="h-3.5 w-3.5" />
-          Pricing unavailable — please type your choice (1–4):
+          Pricing unavailable — please type your choice (1–6):
         </div>
         <ol className="text-xs text-muted-foreground space-y-1 ml-2 list-decimal list-inside">
           <li>Standard — ₹50/hr</li>
           <li>Large Vehicle — ₹80/hr</li>
           <li>EV Charging — ₹120/hr</li>
           <li>VIP Premium — ₹200/hr</li>
+          <li>Disabled / Accessible — ₹30/hr</li>
+          <li>Bike / 2-Wheeler — ₹20/hr</li>
         </ol>
       </div>
     );
@@ -304,14 +319,19 @@ export function ParkingCards({ interactive = true }: ParkingCardsProps) {
 
 /**
  * Detect if a bot message is asking the user to select a parking type.
+ * Matches both the chatbot's built-in prompt and any generic phrasing.
  */
 export function isParkingTypePrompt(content: string): boolean {
   const lower = content.toLowerCase();
-  return (
-    (lower.includes("what type of parking") ||
-      lower.includes("type of parking space")) &&
+  // Match the chatbot's exact phrasing: "What type of parking space do you need?"
+  if (lower.includes("type of parking space")) return true;
+  // Broader match: any message listing parking options with numbers
+  if (
     lower.includes("standard") &&
-    lower.includes("vip")
-  );
+    (lower.includes("vip") || lower.includes("electric") || lower.includes("large")) &&
+    (lower.includes("1.") || lower.includes("1) ") || lower.includes("select"))
+  )
+    return true;
+  return false;
 }
 

@@ -9,7 +9,7 @@
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
 [![Next.js 16](https://img.shields.io/badge/Next.js-16-black.svg)](https://nextjs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-161%20passing-brightgreen.svg)](#-testing) -->
+[![Tests](https://img.shields.io/badge/tests-209%20passing-brightgreen.svg)](#-testing)
 
 **An enterprise-grade AI-powered parking reservation system with RAG, LangGraph orchestration, human-in-the-loop admin approval, and a modern React frontend.**
 
@@ -689,7 +689,73 @@ python main.py --graph
 
 ---
 
-## 🔐 Environment Variables
+## � PostgreSQL Integration
+
+ParkSmart ships with a **dual-database design**:
+
+| Database | Purpose | When used |
+|----------|---------|-----------|
+| **SQLite** (default) | Legacy chatbot store — working hours, prices, availability, reservations | Always (chatbot + LangGraph pipeline) |
+| **PostgreSQL** | Production transactional store — ParkingType, ParkingSlot, Booking, AdminAction | When `DATABASE_URL` is configured |
+| **Pinecone** | Vector store for RAG knowledge retrieval | Always (RAG pipeline) |
+
+### Enabling PostgreSQL
+
+```bash
+# 1. Install the driver (already in requirements.txt)
+pip install psycopg2-binary alembic
+
+# 2. Create a PostgreSQL database
+createdb parksmart
+
+# 3. Uncomment and fill in .env
+# DATABASE_URL=postgresql://user:password@localhost:5432/parksmart
+
+# 4. Run migrations
+alembic upgrade head
+
+# 5. Seed parking types and slots
+python scripts/seed_parking_data.py
+```
+
+### New API Endpoints (Production Bookings)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/bookings` | Create a booking |
+| `GET` | `/api/bookings` | List bookings (filter by `?status=`) |
+| `GET` | `/api/bookings/by-email?email=` | Booking history for a user |
+| `GET` | `/api/bookings/reference/{ref}` | Look up by `PS-XXXXX` reference |
+| `GET` | `/api/bookings/{id}` | Get booking by ID |
+| `POST` | `/api/bookings/{id}/approve` | Admin: approve + assign slot |
+| `POST` | `/api/bookings/{id}/reject` | Admin: reject with remarks |
+| `POST` | `/api/bookings/{id}/cancel` | Cancel a booking |
+| `GET` | `/api/parking/live-status` | Colour-coded availability (`green`/`yellow`/`red`) |
+| `POST` | `/api/bookings/check-availability` | Check availability + get alternatives |
+
+### Architecture Layers
+
+```
+src/models/          ← SQLAlchemy ORM models (ParkingType, ParkingSlot, Booking, AdminAction)
+src/repositories/    ← Data access layer (ParkingRepository, BookingRepository, SlotRepository)
+src/services/        ← Business logic (BookingService, PricingService, AvailabilityService, ...)
+alembic/             ← Database migrations (alembic upgrade head)
+scripts/             ← Seed script (seed_parking_data.py — idempotent, safe to re-run)
+```
+
+### Pricing (INR only)
+
+| Duration | Tier used |
+|----------|-----------|
+| < 24 hours | Hourly rate (`hourly_price`) |
+| 24 h – 30 days | Daily rate (`daily_price`) |
+| ≥ 30 days | Monthly rate (`monthly_price`) |
+
+All prices are in **Indian Rupees (₹)**. No USD conversion anywhere.
+
+---
+
+
 
 Copy `.env.example` to `.env` and configure:
 
@@ -703,6 +769,7 @@ Copy `.env.example` to `.env` and configure:
 | `PINECONE_INDEX_NAME` | No | Pinecone index name | `parking-info` |
 | `PINECONE_ENVIRONMENT` | No | Pinecone region | `us-east-1` |
 | `SQL_DATABASE_URL` | No | SQLite connection string | `sqlite:///./data/parking_dynamic.db` |
+| `DATABASE_URL` | No | PostgreSQL URL — leave blank for SQLite | `""` (SQLite used) |
 | `GUARDRAILS_ENABLED` | No | Enable PII/injection protection | `true` |
 | `SMTP_HOST` | No | Email server hostname | `smtp.gmail.com` |
 | `SMTP_PORT` | No | Email server port | `465` |
@@ -719,7 +786,7 @@ Copy `.env.example` to `.env` and configure:
 ## 🧪 Testing
 
 ```bash
-# Run all 161 tests
+# Run all 209 tests
 python -m pytest tests/ -v
 
 # Run with coverage report
@@ -746,7 +813,11 @@ python main.py --evaluate
 | Email Service | `test_email_service.py` | 6 | SMTP + console fallback |
 | MCP Server/Client | `test_mcp.py` | 21 | Tools + fallback |
 | LangGraph Pipeline | `test_graph.py` | 38 | Nodes + edges + E2E |
-| **Total** | **10 files** | **161** | **All passing** |
+| Pricing Service | `test_pricing_service.py` | 11 | INR tiers, no USD |
+| Booking Validation | `test_booking_validation.py` | 8 | Rules + alternatives |
+| Availability Service | `test_availability_service.py` | 11 | Slots, status, decrement |
+| Booking Service | `test_booking_service.py` | 12 | CRUD + approve/reject |
+| **Total** | **14 files** | **209** | **All passing** |
 
 **Testing conventions:**
 - All external services (LLM, Pinecone, SMTP) are mocked

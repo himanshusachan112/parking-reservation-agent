@@ -18,6 +18,12 @@ tenacity>=8.0.0
 # SQL Database for dynamic data
 sqlalchemy>=2.0.0
 
+# PostgreSQL driver (required when DATABASE_URL points to PostgreSQL)
+psycopg2-binary>=2.9.0
+
+# Database migrations
+alembic>=1.13.0
+
 # Environment & Configuration
 python-dotenv>=1.0.0
 pydantic>=2.0.0

@@ -142,21 +142,28 @@ class SQLStore:
                          Defaults to SQLite file from settings.
         """
         if database_url is None:
-            database_url = settings.sql_database_url
+            # Prefer PostgreSQL if DATABASE_URL is configured, else SQLite
+            database_url = settings.database_url or settings.sql_database_url
 
-        # Ensure the data directory exists (skip for in-memory databases)
+        # Ensure the data directory exists (skip for in-memory / PostgreSQL)
         if "sqlite" in database_url and ":memory:" not in database_url:
             db_path = database_url.replace("sqlite:///", "")
             db_dir = os.path.dirname(db_path)
             if db_dir:
                 os.makedirs(db_dir, exist_ok=True)
 
-        # Create the database engine and session factory
-        # For in-memory SQLite, we use StaticPool to ensure all threads
-        # share the same connection (otherwise each thread gets an empty DB).
-        # This is critical for FastAPI's TestClient which runs handlers
-        # in a thread pool.
-        if ":memory:" in database_url:
+        # Create engine with connection settings appropriate for the DB type
+        _pg = database_url.startswith("postgresql") or database_url.startswith("postgres")
+        if _pg:
+            self.engine = create_engine(
+                database_url,
+                pool_size=5,
+                max_overflow=10,
+                pool_pre_ping=True,
+                pool_recycle=1800,
+                echo=False,
+            )
+        elif ":memory:" in database_url:
             self.engine = create_engine(
                 database_url,
                 echo=False,
@@ -164,7 +171,11 @@ class SQLStore:
                 poolclass=StaticPool,
             )
         else:
-            self.engine = create_engine(database_url, echo=False)
+            self.engine = create_engine(
+                database_url,
+                echo=False,
+                connect_args={"check_same_thread": False},
+            )
         self.SessionLocal = sessionmaker(bind=self.engine)
 
         # Create all tables if they don't exist
@@ -174,8 +185,17 @@ class SQLStore:
         self._migrate_schema()
 
     def _migrate_schema(self):
-        """Add missing columns to existing tables (lightweight migration)."""
+        """Add missing columns to existing SQLite tables (lightweight migration).
+
+        For PostgreSQL, Alembic handles all schema changes – this method is
+        a no-op when running against PostgreSQL to avoid conflicts.
+        """
         from sqlalchemy import inspect, text
+
+        # Skip manual migration for PostgreSQL; Alembic manages it
+        url = str(self.engine.url)
+        if url.startswith("postgresql") or url.startswith("postgres"):
+            return
 
         inspector = inspect(self.engine)
         if "reservations" in inspector.get_table_names():
@@ -185,6 +205,13 @@ class SQLStore:
                     conn.execute(text("ALTER TABLE reservations ADD COLUMN updated_at DATETIME"))
                 if "email" not in columns:
                     conn.execute(text("ALTER TABLE reservations ADD COLUMN email VARCHAR"))
+
+        # Ensure parking_slots has the reservation_id linkage column
+        if "parking_slots" in inspector.get_table_names():
+            slot_cols = [col["name"] for col in inspector.get_columns("parking_slots")]
+            with self.engine.begin() as conn:
+                if "reservation_id" not in slot_cols:
+                    conn.execute(text("ALTER TABLE parking_slots ADD COLUMN reservation_id INTEGER"))
 
     def initialize_default_data(self):
         """
@@ -363,13 +390,49 @@ class SQLStore:
         finally:
             session.close()
 
-    def get_total_availability(self) -> Dict[str, int]:
+    def get_total_availability(self) -> Dict[str, Any]:
         """
-        Get a summary of total available spaces across all floors.
+        Get a summary of total available spaces for all parking types.
+
+        Reads from the PRODUCTION parking_types / parking_slots tables
+        (single source of truth for live availability).  Falls back to the
+        legacy parking_availability table only when the production table is
+        empty (e.g. seed was never run).
 
         Returns:
-            Dict with space_type -> total available count
+            Dict: space_type_slug -> {"available": int, "total": int,
+                                       "reserved": int, "occupied": int}
         """
+        try:
+            from sqlalchemy import func as _func
+            from src.database.session import db_session
+            from src.models.parking_slot import ParkingSlot
+            from src.models.parking_type import ParkingType
+
+            with db_session() as db:
+                types = db.query(ParkingType).all()
+                if types:
+                    result: Dict[str, Any] = {}
+                    for pt in types:
+                        # Count actual slot statuses for accuracy
+                        rows = (
+                            db.query(ParkingSlot.status, _func.count(ParkingSlot.id))
+                            .filter(ParkingSlot.parking_type_id == pt.id)
+                            .group_by(ParkingSlot.status)
+                            .all()
+                        )
+                        status_map = {s: c for s, c in rows}
+                        result[pt.slug] = {
+                            "available": status_map.get("available", 0),
+                            "total": pt.total_slots,
+                            "reserved": status_map.get("reserved", 0),
+                            "occupied": status_map.get("occupied", 0),
+                        }
+                    return result
+        except Exception:
+            pass  # fall through to legacy table
+
+        # Legacy fallback (parking_availability table)
         session = self.SessionLocal()
         try:
             from sqlalchemy import func
@@ -452,12 +515,143 @@ class SQLStore:
             session.add(reservation)
             session.commit()
             reservation_id = reservation.id
-            return reservation_id
         except Exception as e:
             session.rollback()
             raise e
         finally:
             session.close()
+
+        # Pre-reserve a physical slot so pending bookings reduce live availability.
+        # This runs in the production session (parking_types / parking_slots tables).
+        space_type = reservation_data.get("space_type", "")
+        if space_type:
+            self._reserve_slot_for_pending(reservation_id, space_type)
+
+        return reservation_id
+
+    def _reserve_slot_for_pending(self, reservation_id: int, space_type: str) -> bool:
+        """
+        Find the first available slot for *space_type*, mark it 'reserved',
+        link it to this legacy reservation, and decrement the counter.
+
+        Returns True on success, False if no slot available or on any error.
+        Errors are non-fatal — the reservation is still created.
+
+        NOTE: skip_locked=True is NOT used because SQLite raises CompileError for it.
+        For SQLite, plain .first() is sufficient (single-writer model).
+        For PostgreSQL deployments, add row-level locking at the DB level.
+        """
+        try:
+            from src.database.session import db_session
+            from src.models.parking_slot import ParkingSlot, SLOT_STATUS_AVAILABLE, SLOT_STATUS_RESERVED
+            from src.models.parking_type import ParkingType
+
+            with db_session() as db:
+                pt = db.query(ParkingType).filter_by(slug=space_type.lower()).first()
+                if not pt:
+                    return False  # Unknown type
+                if pt.available_slots <= 0:
+                    return False  # No slots — booking should have been blocked upstream
+
+                # Find first available physical slot (no FOR UPDATE — SQLite not supported)
+                slot = (
+                    db.query(ParkingSlot)
+                    .filter_by(parking_type_id=pt.id, status=SLOT_STATUS_AVAILABLE)
+                    .first()
+                )
+                if not slot:
+                    # Counter says available but no physical slot — sync counter down
+                    pt.available_slots = 0
+                    return False
+
+                slot.status = SLOT_STATUS_RESERVED
+                slot.reservation_id = reservation_id
+                pt.available_slots = max(0, pt.available_slots - 1)
+
+            return True
+        except Exception as exc:
+            # Non-fatal — reservation is already saved
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "_reserve_slot_for_pending failed for reservation %d (%s): %s",
+                reservation_id, space_type, exc,
+            )
+            return False
+
+    def release_reserved_slot(self, reservation_id: int) -> bool:
+        """
+        Release the slot that was pre-reserved for *reservation_id*.
+        Called on admin rejection or user cancellation.
+        Changes slot status 'reserved' → 'available' and increments counter.
+        """
+        try:
+            from src.database.session import db_session
+            from src.models.parking_slot import ParkingSlot, SLOT_STATUS_AVAILABLE, SLOT_STATUS_RESERVED
+            from src.models.parking_type import ParkingType
+            import logging as _logging
+            _rlog = _logging.getLogger(__name__)
+
+            with db_session() as db:
+                slot = db.query(ParkingSlot).filter_by(
+                    reservation_id=reservation_id, status=SLOT_STATUS_RESERVED
+                ).first()
+                if not slot:
+                    return False
+
+                pt = db.query(ParkingType).filter_by(id=slot.parking_type_id).first()
+                _rlog.info(
+                    "Releasing slot %s from reservation #%d",
+                    slot.slot_number, reservation_id,
+                )
+                slot.status = SLOT_STATUS_AVAILABLE
+                slot.reservation_id = None
+                if pt:
+                    old_count = pt.available_slots
+                    # Guard: never exceed total_slots
+                    pt.available_slots = min(pt.total_slots, old_count + 1)
+                    _rlog.info(
+                        "%s available_slots updated: %d \u2192 %d",
+                        pt.slug.upper(), old_count, pt.available_slots,
+                    )
+
+            return True
+        except Exception as exc:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "release_reserved_slot failed for reservation %d: %s", reservation_id, exc
+            )
+            return False
+
+    def occupy_reserved_slot(self, reservation_id: int) -> Optional[str]:
+        """
+        Transition the slot pre-reserved for *reservation_id* from
+        'reserved' → 'occupied'. Counter was already decremented at
+        reservation creation, so no counter change here.
+
+        Returns the slot_number string, or None if not found.
+        """
+        try:
+            from src.database.session import db_session
+            from src.models.parking_slot import ParkingSlot, SLOT_STATUS_OCCUPIED, SLOT_STATUS_RESERVED
+
+            with db_session() as db:
+                slot = db.query(ParkingSlot).filter_by(
+                    reservation_id=reservation_id, status=SLOT_STATUS_RESERVED
+                ).first()
+                if not slot:
+                    return None
+
+                slot.status = SLOT_STATUS_OCCUPIED
+                slot.reservation_id = None  # Clear the pending link
+                # current_booking_id stays NULL for legacy reservations (no Booking row)
+
+            return slot.slot_number
+        except Exception as exc:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "occupy_reserved_slot failed for reservation %d: %s", reservation_id, exc
+            )
+            return None
 
     def get_reservations(self, status: str = None) -> List[Dict[str, Any]]:
         """

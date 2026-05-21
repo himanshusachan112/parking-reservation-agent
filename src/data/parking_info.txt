@@ -1,4 +1,283 @@
-# ParkSmart Hyderabad – Parking Information Database
+# ParkSmart Hyderabad – Static Knowledge Base
+# NOTE: Pricing, slot counts, and availability are NOT stored here.
+# The chatbot fetches those live from the database at query time.
+
+---
+
+## About ParkSmart Hyderabad
+
+ParkSmart Hyderabad is a premium smart parking facility at HITEC City, designed for
+IT professionals, corporate employees, visitors, and daily commuters.
+
+The facility features modern smart parking infrastructure including:
+- AI-powered parking management and navigation
+- Automated entry/exit barriers with boom gates
+- License plate recognition (LPR) cameras at all entry points
+- Real-time parking guidance displays on each floor
+- 24/7 CCTV surveillance across all areas
+- Smart EV charging stations (Level 2 + DC fast charge)
+- Emergency SOS assistance at every floor
+
+ParkSmart is especially suited for:
+- EPAM Systems employees and visitors
+- Corporate clients with monthly subscriptions
+- Daily IT park commuters
+- EV owners needing reliable charging
+- Event day and weekend visitors
+
+---
+
+## Location
+
+**ParkSmart Tower Parking Complex**
+Near EPAM Systems Hyderabad,
+Mindspace IT Park, HITEC City,
+Madhapur, Hyderabad, Telangana – 500081, India
+
+Landmarks:
+- EPAM Systems Hyderabad Office – 2 min walk
+- Inorbit Mall – 5 min walk
+- Cyber Towers Metro Station (Hitech City) – 7 min walk
+- IKEA Hyderabad – 10 min drive
+- AIG Hospital – 12 min drive
+
+Access Points:
+- Main vehicle entry: Mindspace Main Road (north gate)
+- Secondary entry: DLF Road side (south gate)
+- Pedestrian exit: Skywalk connected to IT corridor
+
+Operating Hours: Open 24/7, including weekends and public holidays
+
+---
+
+## Parking Categories (Descriptions)
+
+### Standard Parking
+Covered parking bays suitable for hatchbacks, sedans, and compact SUVs.
+Located on floors P1, P2, and P3. Features CCTV monitoring, elevator access,
+and smart slot-guidance indicators. Maximum vehicle size: 5.0 m × 2.0 m × 1.8 m.
+
+### Large Vehicle Parking
+Extra-wide lanes and high roof clearance for large SUVs, MUVs, pickup trucks,
+corporate vans, and tempo travelers. Dedicated floor P4 with easy maneuvering area.
+Maximum vehicle size: 6.5 m × 2.5 m × 2.5 m.
+
+### EV Charging Parking
+Dedicated zone for electric vehicles on floor P2. Equipped with Level 2 AC chargers
+and DC fast-charge ports. Charging cost is included in the parking fee. Supported
+vehicles include Tata EV, MG ZS EV, Tesla, BYD, Ather, and Ola Electric.
+Charging sessions monitored through the smart EV management system.
+
+### VIP Premium Parking
+Exclusive covered spots on the ground floor closest to the main entrance.
+Reserved for corporate executives, premium members, and invited guests.
+Includes dedicated valet support and high-security monitoring.
+
+### Disabled / Accessible Parking
+Wheelchair-accessible bays near elevators on the ground floor. Requires a valid
+disability permit. Extra-wide bays with elevator priority access. Free or deeply
+discounted rates — see live pricing for current rates.
+
+### Bike / 2-Wheeler Parking
+Covered ground-floor zone for motorcycles, scooters, and electric two-wheelers.
+Includes helmet safety lockers, EV bike charging points, and CCTV monitoring.
+
+---
+
+## Reservation Process
+
+How to reserve a parking space via the chatbot:
+1. Provide your full name
+2. Provide your email address
+3. Enter your vehicle registration number
+4. Select parking type (Standard, Large, EV, VIP, Disabled, Bike)
+5. Choose booking start date and time
+6. Choose booking end date and time
+7. Review and confirm all details
+
+After confirmation:
+- The reservation goes to admin review (usually within a few minutes)
+- You will receive an email confirmation or rejection
+- Approved reservations include your assigned slot number
+
+Booking rules:
+- Bookings must be placed at least 30 minutes before the desired start time
+- Maximum single reservation: 30 days
+- Free cancellation up to 2 hours before the booking starts
+- Late cancellations (within 2 hours) may incur a partial charge
+
+---
+
+## Cancellation & Refund Policy
+
+- Cancel any time via the chatbot or by contacting support
+- Full refund if cancelled more than 2 hours before start time
+- 50% refund for cancellations within 1–2 hours of start time
+- No refund for no-shows or same-hour cancellations
+- Monthly subscriptions: 7-day notice required for cancellation
+- Refunds processed to original payment method within 5–7 business days
+
+---
+
+## Security
+
+ParkSmart operates a multi-layer security infrastructure:
+- 24/7 AI-powered CCTV covering all floors and entry/exit points
+- Automatic Number Plate Recognition (ANPR) at all gates
+- Security guards on patrol — ground floor 24/7, upper floors during peak hours
+- RFID-based access control for monthly subscribers
+- Visitor tracking register at main gate
+- Fire suppression systems and emergency evacuation signage on every floor
+- Emergency SOS buttons on each level (connected to 24/7 security desk)
+- Overnight parking is permitted and fully monitored
+
+ParkSmart is NOT liable for valuables left inside vehicles. Use the lockers in
+the waiting lounge for personal items.
+
+---
+
+## Facilities & Amenities
+
+On-site amenities:
+- Free high-speed WiFi throughout the facility
+- Clean washrooms on ground floor and floor P3
+- Elevator access connecting all floors
+- Drinking water dispensers (ground floor and P3)
+- Air-conditioned waiting lounge (ground floor)
+- EV charging stations with smartphone monitoring
+- Professional car wash service (booking required, additional charge)
+- Valet parking during business hours (08:00–20:00)
+- Tire air pressure check station (self-service)
+- Emergency jump-start support (call security desk)
+
+---
+
+## Payment Methods
+
+Accepted payment options:
+- UPI: PhonePe, Google Pay, Paytm, BHIM
+- Credit cards (Visa, Mastercard, Amex, RuPay)
+- Debit cards
+- Net banking
+- Corporate invoicing (monthly billing for registered companies)
+- Cash payment at ground-floor kiosk (exact change preferred)
+- GST invoice available on request for corporate accounts
+
+---
+
+## Corporate Membership Plans
+
+**Silver Plan** — Standard reserved parking, monthly billing, includes 1 reserved bay.
+
+**Gold Plan** — Premium access, priority booking, 10% discount on daily rates,
+includes 1 reserved Standard or Large bay.
+
+**Platinum Plan** — VIP reserved slot, free valet service, EV charging priority,
+15% discount on all services, includes 1 VIP bay.
+
+Contact corporate@parksmart.in for current plan pricing and enrollment.
+
+---
+
+## Policies & Rules
+
+Vehicle conduct:
+- Speed limit inside the facility: 10 km/h
+- No honking inside enclosed floors
+- No vehicle servicing, repairs, or oil changes inside premises
+- No smoking anywhere inside the parking complex
+- Dangerous or flammable materials strictly prohibited
+- All vehicles must have valid registration documents
+
+Parking conduct:
+- Park only within marked bay boundaries
+- Do not block driveways, ramps, or emergency lanes
+- Disabled bays require a valid disability permit display
+- EV bays are exclusively for electric vehicles — ICE vehicles will be towed
+- Violation of any rule may result in clamping, towing, or a fine
+
+---
+
+## Contact Information
+
+| Channel | Details |
+|---|---|
+| Customer Support Phone | +91 7985819872 |
+| WhatsApp Support | +91-7985819872 |
+| General Email | support@parksmart.in |
+| Reservations | reservations@parksmart.in |
+| Corporate Queries | corporate@parksmart.in |
+| Emergency Helpline | +91-40-9999-0000 |
+| Website | www.parksmart.in |
+
+Support is available 24/7 for emergencies; general queries answered 08:00–22:00.
+
+---
+
+## Frequently Asked Questions
+
+**Q: Is EV charging available?**
+Yes. Floor P2 has a dedicated EV zone with both Level 2 AC chargers and DC fast-charge
+ports. Charging is included in the EV parking fee. Open 24/7.
+
+**Q: Is overnight parking allowed?**
+Yes. The facility operates 24/7 and overnight parking is fully supported.
+Book in advance to guarantee a spot during peak event days.
+
+**Q: Can I cancel my reservation?**
+Yes. Free cancellation up to 2 hours before your start time. See cancellation policy above.
+
+**Q: Is valet parking available?**
+Yes, during business hours (08:00–20:00). Valet is included for VIP Premium holders;
+other customers can request it for an additional fee.
+
+**Q: Are all parking floors covered?**
+Yes. All six floors are covered and sheltered from rain and direct sunlight.
+
+**Q: Is the parking facility secure?**
+Yes. AI-CCTV, ANPR cameras, 24/7 guards, RFID access, fire systems, and emergency
+SOS buttons are deployed throughout the facility.
+
+**Q: Can I reserve parking online?**
+Yes, through this AI chatbot. Just tell the assistant you want to book a parking space.
+
+**Q: What is the maximum booking duration?**
+30 days in a single reservation. Monthly subscription plans are available for
+longer-term needs.
+
+**Q: Are there monthly subscription plans?**
+Yes — Silver, Gold, and Platinum corporate plans are available. Contact
+corporate@parksmart.in or ask the chatbot for details.
+
+**Q: Is a GST invoice available?**
+Yes, for corporate accounts. Request it at the time of payment or email
+support@parksmart.in with your booking reference.
+
+**Q: What vehicles can use EV parking?**
+Any registered electric vehicle — Tata Nexon EV, MG ZS EV, Tesla, BYD Atto 3,
+Ather 450X, Ola S1 Pro, and others. Hybrid vehicles may park but cannot use
+dedicated charging ports unless they are plug-in hybrids.
+
+**Q: Is bike parking available?**
+Yes — a dedicated covered zone for motorcycles, scooters, and e-bikes is on the
+ground floor with helmet lockers and EV charging for two-wheelers.
+
+---
+
+## What the Chatbot Can Help With
+
+The chatbot can:
+- Answer questions about parking policies, rules, and facilities
+- Check LIVE pricing (fetched from database in real time)
+- Check LIVE availability (fetched from database in real time)
+- Guide you through the reservation process step by step
+- Provide location and access directions
+- Answer corporate membership questions
+- Help with cancellation requests
+
+For pricing and availability — the chatbot queries the live database, so you
+always get current accurate information.
+
 
 ## General Information
 

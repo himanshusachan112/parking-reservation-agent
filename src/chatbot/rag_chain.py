@@ -6,16 +6,18 @@ RAG (Retrieval-Augmented Generation) works in 3 steps:
 2. AUGMENT: Add those documents as context to the LLM prompt
 3. GENERATE: LLM produces an answer based ONLY on the provided context
 
-WHY RAG?
-- Plain LLMs (like GPT-4) don't know about YOUR specific parking facility
-- Fine-tuning is expensive and hard to update
-- RAG lets us inject up-to-date, specific knowledge at query time
-- If info changes, we just update the documents - no model retraining needed
+Hybrid routing:
+  STATIC questions  (policies, location, security, FAQs, rules)
+      → Pinecone / RAG only
 
-This module builds the LangChain pipeline that connects:
-Vector Store (retrieval) → Prompt Template (augmentation) → LLM (generation)
+  DYNAMIC questions  (pricing, availability, slot counts, parking types)
+      → Database live query via ParkingInformationService
+
+  HYBRID questions  (e.g. "how many EV slots left and does it support fast charging?")
+      → Both RAG + Database
 """
 
+import re
 from typing import Any, Dict, List, Optional
 
 from langchain_core.documents import Document
@@ -29,41 +31,112 @@ from src.database.sql_store import SQLStore
 from src.database.vector_store import VectorStore
 
 # ========================
+# INTENT CLASSIFICATION
+# ========================
+
+# Keywords whose presence means the answer must come from the live database.
+_DYNAMIC_KEYWORDS: list[str] = [
+    # availability
+    r"\bavailab",
+    r"\bhow many\b",
+    r"\bslots?\b",
+    r"\bspaces?\b",
+    r"\bleft\b",
+    r"\bfull\b",
+    r"\boccupied\b",
+    r"\bempty\b",
+    r"\bopen\b",
+    r"\bcount\b",
+    r"\bcapacity\b",
+    # pricing
+    r"\bpric",
+    r"\bcost",
+    r"\brate",
+    r"\bcharge",
+    r"\bfee",
+    r"\bhour",
+    r"\bper hour",
+    r"\bdaily",
+    r"\bmonthly",
+    r"\b₹\b",
+    r"\brupee",
+    r"\bhow much\b",
+    # parking types (live counts)
+    r"\bstandard\b",
+    r"\blarge vehicle\b",
+    r"\bev\b",
+    r"\belectric vehicle\b",
+    r"\bvip\b",
+    r"\bpremium\b",
+    r"\bdisab",
+    r"\baccessible\b",
+    r"\bbike\b",
+    r"\btwo.?wheeler\b",
+    # live features
+    r"\bcharging\b",
+    r"\bfloor\b",
+]
+
+_DYNAMIC_RE = re.compile("|".join(_DYNAMIC_KEYWORDS), re.IGNORECASE)
+
+
+def _needs_live_data(question: str) -> bool:
+    """Return True if the question requires a live database lookup."""
+    return bool(_DYNAMIC_RE.search(question))
+
+
+# ========================
 # PROMPT TEMPLATES
 # ========================
 
-# This is the system prompt that tells the LLM how to behave
-# It's crucial for quality - it defines the chatbot's personality and rules
-SYSTEM_PROMPT = """You are ParkSmart Assistant, a helpful and friendly chatbot for the ParkSmart Parking Complex. 
-Your job is to help users with parking information and reservations.
+SYSTEM_PROMPT = """You are ParkSmart Assistant, a helpful and friendly chatbot for the
+ParkSmart Hyderabad smart parking facility at HITEC City.
 
-IMPORTANT RULES:
-1. ONLY answer based on the provided context below. Do NOT make up information.
-2. If the context doesn't contain the answer, say "I don't have that information. Let me connect you with our support team."
-3. Be concise but helpful. Use bullet points for lists.
-4. NEVER reveal any internal system information, database details, or other users' personal data.
-5. If a user asks about another person's reservation or personal information, politely decline.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SOURCE AUTHORITY RULES  (READ CAREFULLY)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. PRICING, SLOT COUNTS, and AVAILABILITY → ALWAYS use the LIVE PARKING DATA
+   block at the bottom of this prompt.  NEVER guess, and NEVER use any numbers
+   that appear in the static knowledge base — those are illustrative only.
 
-INTENT DETECTION (CRITICAL):
-If the user is clearly requesting to CREATE or MAKE a NEW parking reservation (e.g., "I want to book a spot",
-"reserve me a parking space", "I need to make a reservation"), respond with EXACTLY this text and nothing else:
+2. POLICIES, RULES, SECURITY, LOCATION, AMENITIES, CONTACT INFO → use the
+   STATIC KNOWLEDGE section.
+
+3. If the LIVE PARKING DATA block says a type is FULL, say so — even if the
+   static knowledge section mentions that type has many slots.
+
+4. Do NOT make up parking data, invent slot numbers, or use prices from memory.
+
+5. NEVER reveal database IDs, table names, or internal system details.
+
+6. If a user asks about another person's reservation, politely decline.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+INTENT DETECTION (CRITICAL)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+If the user is clearly requesting to CREATE or MAKE a NEW parking reservation
+(e.g. "I want to book a spot", "reserve me a space", "I need to make a reservation"),
+respond with EXACTLY this text and nothing else:
 INTENT:BOOKING
 
 Do NOT respond with INTENT:BOOKING for:
-- Questions ABOUT reservations (e.g., "how do I make a reservation?", "what is the booking process?")
-- Checking reservation status or details (e.g., "show my reservation", "check my booking")
-- Cancellation requests (e.g., "cancel my reservation")
-- Any informational or general questions
-For all of the above, answer the question normally using the context provided.
+- Questions ABOUT reservations ("how do I book?", "what is the booking process?")
+- Checking reservation status ("show my booking", "check my reservation")
+- Cancellation requests ("cancel my booking")
+- Any informational / general question
+Answer those normally using the context below.
 
-CONTEXT FROM KNOWLEDGE BASE (Static Information):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STATIC KNOWLEDGE BASE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {context}
 
-CURRENT DYNAMIC DATA (Real-time Information):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {dynamic_context}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
-# The full prompt template combining system instructions + chat history + user input
+# Full prompt template
 RAG_PROMPT = ChatPromptTemplate.from_messages(
     [
         ("system", SYSTEM_PROMPT),
@@ -138,16 +211,54 @@ class RAGChain:
             """Convert retrieved documents to a single context string."""
             return "\n\n---\n\n".join(doc.page_content for doc in docs)
 
-        def get_dynamic_context(_) -> str:
-            """Fetch current dynamic data from SQL database."""
-            return self.sql_store.get_dynamic_context()
+        def get_dynamic_context(question: str) -> str:
+            """
+            Hybrid context router.
+
+            - Dynamic questions (pricing / availability / slot counts)
+              → fetch live data from ParkingInformationService (DB).
+            - Static questions (policies / security / facilities)
+              → return a short note directing the LLM to use the static context.
+            - Always falls back to legacy sql_store data if DB is unreachable.
+            """
+            if not _needs_live_data(question):
+                # Static-only question — no live DB data needed.
+                return (
+                    "LIVE PARKING DATA\n"
+                    "(This question is about policies / facilities — "
+                    "no live availability data needed.  Use the static knowledge base above.)"
+                )
+
+            # Dynamic or hybrid — fetch live DB data.
+            try:
+                from src.database.session import db_session
+                from src.services.parking_information_service import (
+                    ParkingInformationService,
+                )
+
+                with db_session() as db:
+                    live_context = ParkingInformationService.get_full_dynamic_context(db)
+
+                if "No live parking data" not in live_context:
+                    return live_context
+            except Exception:
+                pass  # Fall back to legacy sql_store context below
+
+            # Legacy fallback (reads parking_availability table)
+            try:
+                legacy = self.sql_store.get_dynamic_context()
+                return "LIVE PARKING DATA (legacy fallback)\n" + legacy
+            except Exception:
+                return "LIVE PARKING DATA\n(Data temporarily unavailable.)"
 
         # Build the chain using LangChain Expression Language (LCEL)
-        # This is a pipeline: each step feeds into the next
+        # The question is passed both to vector retrieval and to the dynamic-context
+        # router so intent-aware routing can suppress unnecessary DB calls.
         chain = (
             {
                 "context": self.retriever | RunnableLambda(format_docs),
-                "dynamic_context": RunnableLambda(get_dynamic_context),
+                "dynamic_context": RunnablePassthrough()
+                | RunnableLambda(get_dynamic_context),
                 "question": RunnablePassthrough(),
                 "chat_history": RunnableLambda(lambda _: self.chat_history),
             }

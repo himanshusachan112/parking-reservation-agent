@@ -12,9 +12,9 @@ HOW IT WORKS:
 
 import os
 from pathlib import Path
-
-from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
+from pydantic import ConfigDict
+
 
 # Project root directory (2 levels up from config/)
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -56,7 +56,18 @@ class Settings(BaseSettings):
 
     # === SQL Database Configuration ===
     # SQLite connection string for dynamic data (prices, availability, hours)
+    # Used as fallback when database_url is not set.
     sql_database_url: str = f"sqlite:///{PROJECT_ROOT / 'data' / 'parking_dynamic.db'}"
+
+    # === PostgreSQL (Primary Production Database) ===
+    # Set DATABASE_URL in .env to switch from SQLite to PostgreSQL.
+    # Example: postgresql://postgres:password@localhost:5432/parksmart
+    # When set, ALL transactional data (bookings, availability, prices) goes here.
+    # Leave empty to use SQLite (local dev without PostgreSQL).
+    database_url: str = ""
+
+    # CORS allowed origins (comma-separated, no spaces)
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 
     # === Guardrails Configuration ===
     # Whether to enable PII/sensitive data filtering
@@ -75,12 +86,6 @@ class Settings(BaseSettings):
 
     # Maximum tokens in the response
     llm_max_tokens: int = 1024
-
-    # === CORS Configuration ===
-    # Comma-separated list of allowed frontend origins.
-    # Add your ngrok frontend URL here when running a public demo.
-    # Example: "http://localhost:3000,https://abc123.ngrok-free.app"
-    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 
     # === Email / SMTP Configuration ===
     smtp_host: str = ""

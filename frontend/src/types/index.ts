@@ -68,7 +68,7 @@ export interface Reservation {
 }
 
 export type ReservationStatus = "pending" | "approved" | "rejected";
-export type SpaceType = "standard" | "large" | "ev" | "vip";
+export type SpaceType = string;
 
 export interface ReservationRequest {
   first_name: string;

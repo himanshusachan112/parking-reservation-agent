@@ -89,6 +89,8 @@ export const useAdminStore = create<AdminStore>((set, get) => ({
       await adminService.approve(id, notes);
       await get().fetchReservations();
       set({ selectedReservation: null });
+      // Immediately refresh slot stats in StatsCards / SlotManagement
+      window.dispatchEvent(new CustomEvent("parksmart:slot-stats-refresh"));
     } catch (err: unknown) {
       const errorMessage =
         err && typeof err === "object" && "detail" in err
@@ -104,6 +106,8 @@ export const useAdminStore = create<AdminStore>((set, get) => ({
       await adminService.reject(id, notes);
       await get().fetchReservations();
       set({ selectedReservation: null });
+      // Immediately refresh slot stats in StatsCards / SlotManagement
+      window.dispatchEvent(new CustomEvent("parksmart:slot-stats-refresh"));
     } catch (err: unknown) {
       const errorMessage =
         err && typeof err === "object" && "detail" in err

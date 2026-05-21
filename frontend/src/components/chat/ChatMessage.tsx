@@ -16,11 +16,30 @@ import {
   ConfirmationButtons,
   isConfirmationPrompt,
 } from "./ConfirmationButtons";
+import { BookingSummaryCard } from "./BookingSummaryCard";
 import type { ChatMessage as ChatMessageType } from "@/types";
 
 interface ChatMessageProps {
   message: ChatMessageType;
   isLatest?: boolean;
+}
+
+/** Parse booking details out of the chatbot's confirmation message. */
+function extractBookingDetails(content: string) {
+  const typeMatch = content.match(/Space Type:\s*(\S+)/i);
+  const fromMatch = content.match(/From:\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})/i);
+  const toMatch = content.match(/To:\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})/i);
+  if (!typeMatch || !fromMatch || !toMatch) return null;
+  // Extract name and vehicle (stop at bullet • or newline)
+  const nameMatch = content.match(/Name:\s*([^\u2022\n\r]+)/i);
+  const vehicleMatch = content.match(/Vehicle:\s*([^\u2022\n\r]+)/i);
+  return {
+    spaceType: typeMatch[1].toLowerCase().trim(),
+    startDatetime: fromMatch[1].trim(),
+    endDatetime: toMatch[1].trim(),
+    name: nameMatch ? nameMatch[1].trim() : undefined,
+    vehicle: vehicleMatch ? vehicleMatch[1].trim() : undefined,
+  };
 }
 
 export function ChatMessage({ message, isLatest }: ChatMessageProps) {
@@ -35,6 +54,10 @@ export function ChatMessage({ message, isLatest }: ChatMessageProps) {
     !isUser && isLatest && isConfirmationPrompt(message.content);
   const isConfirmation =
     !isUser && message.content.includes("reservation request has been submitted");
+
+  // Extract booking details for price estimate on confirmation step
+  const confirmationDetails =
+    showConfirmation ? extractBookingDetails(message.content) : null;
 
   return (
     <motion.div
@@ -101,6 +124,17 @@ export function ChatMessage({ message, isLatest }: ChatMessageProps) {
             {showStartDatePicker && <DateTimePicker mode="start" />}
             {showEndDatePicker && <DateTimePicker mode="end" />}
 
+            {/* Price estimate on confirmation step */}
+            {showConfirmation && confirmationDetails && (
+              <BookingSummaryCard
+                spaceType={confirmationDetails.spaceType}
+                startDatetime={confirmationDetails.startDatetime}
+                endDatetime={confirmationDetails.endDatetime}
+                name={confirmationDetails.name}
+                vehicle={confirmationDetails.vehicle}
+              />
+            )}
+
             {/* Confirmation buttons for booking review */}
             {showConfirmation && <ConfirmationButtons />}
           </div>
@@ -132,3 +166,4 @@ export function ChatMessage({ message, isLatest }: ChatMessageProps) {
     </motion.div>
   );
 }
+
