@@ -2,14 +2,14 @@
 <div align="center">
 
 # 🚗 ParkSmart — AI Parking Reservation Platform
-
+<!-- 
 [![Backend CI](https://github.com/sanyam991/parking-chatbot/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/sanyam991/parking-chatbot/actions/workflows/backend-ci.yml)
 [![Frontend CI](https://github.com/sanyam991/parking-chatbot/actions/workflows/frontend-ci.yml/badge.svg)](https://github.com/sanyam991/parking-chatbot/actions/workflows/frontend-ci.yml)
 [![Docker Build](https://github.com/sanyam991/parking-chatbot/actions/workflows/docker-build.yml/badge.svg)](https://github.com/sanyam991/parking-chatbot/actions/workflows/docker-build.yml)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
 [![Next.js 16](https://img.shields.io/badge/Next.js-16-black.svg)](https://nextjs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-161%20passing-brightgreen.svg)](#-testing)
+[![Tests](https://img.shields.io/badge/tests-161%20passing-brightgreen.svg)](#-testing) -->
 
 **An enterprise-grade AI-powered parking reservation system with RAG, LangGraph orchestration, human-in-the-loop admin approval, and a modern React frontend.**
 
