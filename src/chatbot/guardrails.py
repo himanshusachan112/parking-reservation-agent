@@ -25,12 +25,54 @@ HOW PII DETECTION WORKS:
 ALTERNATIVE APPROACH (fallback if Presidio is not available):
 - Simple regex-based detection for common PII patterns
 - Less accurate but works without extra model downloads
+
+WHY ALLOWLISTING IS NEEDED:
+Presidio and regex patterns cannot distinguish between a *user's* private phone number
+and a *business's* public support line.  Without an allowlist, official ParkSmart contacts
+like "+91-40-9999-0000" or "support@parksmart.in" would be redacted from bot responses,
+breaking the user experience.
+
+MASKING DECISION LOGIC:
+  PRIVATE_USER_INFO   → always redacted  (user emails, user phone numbers, payment info)
+  PUBLIC_BUSINESS_INFO → never redacted  (company contacts, official addresses, websites)
+
+The filter uses a *placeholder-substitution* strategy for PUBLIC_BUSINESS_INFO:
+  1. Replace every known public contact with a unique sentinel token  (e.g. __PS_0__)
+  2. Run Presidio / regex on the sentinel-substituted text
+  3. Restore sentinels back to the original public values
+
+This guarantees public contacts are untouched regardless of how Presidio tokenises them.
 """
 
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from config.settings import settings
+
+# ---------------------------------------------------------------------------
+# PUBLIC_BUSINESS_INFO – official ParkSmart contacts that must NEVER be masked
+# ---------------------------------------------------------------------------
+# These are sourced from parking_info.txt and are intentionally public.
+# Add any new official contacts here to protect them automatically.
+PUBLIC_BUSINESS_INFO: Tuple[str, ...] = (
+    # ── Phone numbers ──────────────────────────────────────────────────────
+    "+91 7985819872",
+    "+91-7985819872",
+    "+91-40-5555-7788",
+    "+91-98765-43210",
+    "+91-40-9999-0000",
+    # ── Email addresses ────────────────────────────────────────────────────
+    "support@parksmart.in",
+    "reservations@parksmart.in",
+    "corporate@parksmart.in",
+    # ── Website ────────────────────────────────────────────────────────────
+    "www.parksmart.in",
+    "parksmart.in",
+)
+
+# Sentinel template used during placeholder substitution.
+# Unlikely to appear in any real LLM response.
+_SENTINEL_TPL = "__PARKSMART_CONTACT_{idx}__"
 
 
 class Guardrails:
@@ -40,6 +82,9 @@ class Guardrails:
     Uses a dual approach:
     - Presidio NLP analyzer (if available) for high-accuracy PII detection
     - Regex fallback patterns for basic protection
+
+    Public business contacts listed in PUBLIC_BUSINESS_INFO are *never* redacted;
+    only genuine private user data is masked.
     """
 
     def __init__(self):
@@ -84,22 +129,59 @@ class Guardrails:
             r"(admin|administrator|internal)\s*(password|access|credentials?)",
         ]
 
-        # Regex patterns for PII detection (fallback)
+        # Regex patterns for PRIVATE_USER_INFO detection (Presidio fallback).
+        # These are intentionally narrow to avoid false-positives on business info.
         self.pii_patterns = {
             "email": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
-            "phone": r"\b(\+?1?[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b",
+            "phone": r"(?<!\d)(\+?(\d[\s\-.]?){9,14}\d)(?!\d)",
             "credit_card": r"\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b",
             "ssn": r"\b\d{3}[-\s]?\d{2}[-\s]?\d{4}\b",
         }
 
-        # Known safe patterns (parking-related data that looks like PII but isn't)
+        # Regex patterns that are always safe regardless of content
+        # (e.g. masked user emails produced by masking.py – already anonymised)
         self.safe_patterns = [
-            r"\+1-555-PARK-123",  # Our own phone number
-            r"support@parksmart\.com",  # Our own email
-            r"reservations@parksmart\.com",
-            r"feedback@parksmart\.com",
-            r"[A-Za-z0-9]{1,2}\*{2,}@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",  # Masked emails (e.g. sa****@gmail.com)
+            r"[A-Za-z0-9]{1,2}\*{2,}@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",  # sa****@gmail.com
         ]
+
+    # -----------------------------------------------------------------------
+    # Public-info protection helpers (placeholder substitution)
+    # -----------------------------------------------------------------------
+
+    def _protect_public_info(self, text: str) -> Tuple[str, Dict[str, str]]:
+        """
+        Temporarily replace every PUBLIC_BUSINESS_INFO value with a unique
+        sentinel token so that Presidio / regex never sees them.
+
+        Returns:
+            protected_text: text with sentinels in place of public contacts.
+            restore_map:    mapping sentinel → original value for restoration.
+
+        WHY: Presidio cannot distinguish between a user's private phone number
+        and an official business support line.  By substituting known-safe values
+        before analysis, we guarantee they are never redacted regardless of how
+        the NER model tokenises the surrounding context.
+        """
+        restore_map: Dict[str, str] = {}
+        protected = text
+        # Sort longest-first so that "+91-7985819872" is matched before "7985819872"
+        for idx, public_value in enumerate(sorted(PUBLIC_BUSINESS_INFO, key=len, reverse=True)):
+            sentinel = _SENTINEL_TPL.format(idx=idx)
+            if public_value in protected:
+                protected = protected.replace(public_value, sentinel)
+                restore_map[sentinel] = public_value
+        return protected, restore_map
+
+    def _restore_public_info(self, text: str, restore_map: Dict[str, str]) -> str:
+        """Reverse _protect_public_info — swap sentinels back to original values."""
+        restored = text
+        for sentinel, original in restore_map.items():
+            restored = restored.replace(sentinel, original)
+        return restored
+
+    # -----------------------------------------------------------------------
+    # Input guardrail
+    # -----------------------------------------------------------------------
 
     def check_input(self, user_input: str) -> Dict[str, Any]:
         """
@@ -156,36 +238,46 @@ class Guardrails:
 
     def filter_output(self, response: str) -> str:
         """
-        Filter the LLM output to remove any accidentally leaked PII.
+        Filter the LLM output to remove any accidentally leaked PRIVATE_USER_INFO.
 
-        This is a safety net - even if the LLM somehow includes sensitive
-        data in its response, this function catches and redacts it.
+        PUBLIC_BUSINESS_INFO (official ParkSmart contacts) is never touched.
+
+        Strategy:
+          1. Protect public contacts via placeholder substitution.
+          2. Also collect ranges of already-masked user emails (sa****@gmail.com)
+             so the regex fallback doesn't double-redact them.
+          3. Run Presidio or regex on the substituted text.
+          4. Restore public contacts from sentinels.
 
         Args:
-            response: The raw LLM response
+            response: The raw LLM response.
 
         Returns:
-            Filtered response with PII redacted
+            Filtered response with only PRIVATE_USER_INFO redacted.
         """
         if not self.enabled:
             return response
 
-        # Ensure response is a plain string
         response = str(response) if not isinstance(response, str) else response
 
-        # First, check if any patterns are in the "safe" list (our own contact info)
-        # These should not be redacted
-        safe_matches = []
+        # Step 1 – protect public business contacts with sentinel placeholders.
+        protected, restore_map = self._protect_public_info(response)
+
+        # Step 2 – also find already-masked user emails (safe_patterns) so the
+        # fallback regex doesn't accidentally re-redact them.
+        safe_ranges: List[tuple] = []
         for pattern in self.safe_patterns:
-            for match in re.finditer(pattern, response):
-                safe_matches.append((match.start(), match.end()))
+            for m in re.finditer(pattern, protected):
+                safe_ranges.append((m.start(), m.end()))
 
-        # Use Presidio if available (more accurate)
+        # Step 3 – run PII detection on the sentinel-substituted text.
         if self.presidio_available:
-            return self._filter_with_presidio(response, safe_matches)
+            filtered = self._filter_with_presidio(protected, safe_ranges)
+        else:
+            filtered = self._filter_with_regex(protected, safe_ranges)
 
-        # Otherwise, use regex fallback
-        return self._filter_with_regex(response, safe_matches)
+        # Step 4 – restore public contacts (sentinels → original values).
+        return self._restore_public_info(filtered, restore_map)
 
     def _filter_with_presidio(self, text: str, safe_ranges: List[tuple]) -> str:
         """
@@ -255,14 +347,19 @@ class Guardrails:
 
     def detect_pii_in_text(self, text: str) -> List[Dict[str, Any]]:
         """
-        Detect PII entities in text (for evaluation/debugging).
+        Detect PRIVATE_USER_INFO entities in text (for evaluation/debugging).
+
+        PUBLIC_BUSINESS_INFO values are excluded from results — they are
+        intentionally public and should never appear as PII detections.
 
         Returns a list of detected entities with their types and positions.
-        Useful for testing the guardrails system.
         """
+        # Protect public contacts first so they don't show as PII detections.
+        protected, _ = self._protect_public_info(text)
+
         if self.presidio_available:
             results = self.analyzer.analyze(
-                text=text,
+                text=protected,
                 language="en",
                 score_threshold=self.confidence_threshold,
             )
@@ -272,15 +369,14 @@ class Guardrails:
                     "start": r.start,
                     "end": r.end,
                     "score": r.score,
-                    "text": text[r.start : r.end],
+                    "text": protected[r.start : r.end],
                 }
                 for r in results
             ]
         else:
-            # Regex-based detection
             detections = []
             for pii_type, pattern in self.pii_patterns.items():
-                for match in re.finditer(pattern, text):
+                for match in re.finditer(pattern, protected):
                     detections.append(
                         {
                             "entity_type": pii_type.upper(),
