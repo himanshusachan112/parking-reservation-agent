@@ -401,6 +401,12 @@ def approve_reservation(reservation_id: int, request: AdminActionRequest = None)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to update reservation")
 
+    # Decrement real-time slot availability for the approved space type
+    try:
+        sql_store.update_availability(reservation["space_type"], delta=-1)
+    except Exception as e:
+        print(f"⚠ Slot availability update failed: {e}")
+
     # Notify the user via email about the approval
     try:
         updated = sql_store.get_reservation_by_id(reservation_id)
@@ -433,6 +439,8 @@ def reject_reservation(reservation_id: int, request: AdminActionRequest = None):
     Admin rejects a pending reservation.
 
     Updates the status to 'rejected' with optional reason.
+    Since the slot was never allocated (only approved bookings claim a slot),
+    no availability change is needed here.
     """
     reservation = sql_store.get_reservation_by_id(reservation_id)
     if not reservation:
@@ -458,6 +466,181 @@ def reject_reservation(reservation_id: int, request: AdminActionRequest = None):
         success=True,
         message=f"Reservation #{reservation_id} rejected for {reservation['first_name']} {reservation['last_name']}",
     )
+
+
+# ========================
+# PARKING AVAILABILITY & PRICING ENDPOINTS
+# ========================
+
+# Master config: parking types with INR pricing and feature metadata.
+# Prices mirror initialize_default_data() in sql_store.py.
+_PARKING_TYPE_META = {
+    "standard": {
+        "name": "Standard Parking",
+        "description": "Hatchbacks, sedans & compact SUVs",
+        "hourly_price": 50,
+        "daily_price": 350,
+        "monthly_price": 4500,
+        "features": ["CCTV monitored", "Covered parking", "Elevator access"],
+    },
+    "large": {
+        "name": "Large Vehicle",
+        "description": "SUVs, pickup trucks & vans",
+        "hourly_price": 80,
+        "daily_price": 550,
+        "monthly_price": 7000,
+        "features": ["Extra-wide lanes", "High roof clearance", "Floor P4"],
+    },
+    "ev": {
+        "name": "EV Charging",
+        "description": "Level 2 + fast charging included",
+        "hourly_price": 120,
+        "daily_price": 800,
+        "monthly_price": 9500,
+        "features": ["Free charging", "Fast charge", "24/7 access"],
+    },
+    "vip": {
+        "name": "VIP Premium",
+        "description": "Closest to exit, dedicated valet",
+        "hourly_price": 200,
+        "daily_price": 1500,
+        "monthly_price": 18000,
+        "features": ["Covered premium area", "Priority access", "Valet support"],
+    },
+    "disabled": {
+        "name": "Disabled",
+        "description": "Wheelchair-accessible near elevators",
+        "hourly_price": 30,
+        "daily_price": 120,
+        "monthly_price": 1200,
+        "features": ["Wheelchair access", "Extra-wide", "Elevator priority"],
+    },
+    "bike": {
+        "name": "Bike / 2-Wheeler",
+        "description": "Bikes, scooters & electric two-wheelers",
+        "hourly_price": 20,
+        "daily_price": 120,
+        "monthly_price": 1200,
+        "features": ["Covered area", "EV bike charging", "Helmet lockers"],
+    },
+}
+
+
+@app.get("/api/parking/availability")
+def get_parking_availability():
+    """
+    Get live slot availability for all parking types.
+
+    Returns counts per type with percentage and status label.
+    Frontend polls this endpoint every 30 s for real-time updates.
+    """
+    import datetime as _dt
+
+    summary = sql_store.get_total_availability()
+    result = []
+    for space_type, counts in summary.items():
+        available = counts["available"]
+        total = counts["total"]
+        pct = round((available / total) * 100) if total else 0
+        if pct >= 50:
+            status = "available"
+        elif pct > 0:
+            status = "limited"
+        else:
+            status = "full"
+        result.append(
+            {
+                "space_type": space_type,
+                "available": available,
+                "total": total,
+                "percentage": pct,
+                "status": status,
+            }
+        )
+    return {"availability": result, "timestamp": _dt.datetime.utcnow().isoformat()}
+
+
+@app.get("/api/parking/types")
+def get_parking_types():
+    """
+    Get all parking types with INR pricing and live availability.
+
+    Used by the frontend ParkingCards component to render interactive
+    type selection with real-time slot counts.
+    """
+    summary = sql_store.get_total_availability()
+    types = []
+    for key, meta in _PARKING_TYPE_META.items():
+        avail = summary.get(key, {"available": 0, "total": 0})
+        available = avail["available"]
+        total = avail["total"]
+        pct = round((available / total) * 100) if total else 0
+        types.append(
+            {
+                "id": key,
+                **meta,
+                "available_slots": available,
+                "total_slots": total,
+                "availability_percentage": pct,
+                "is_available": available > 0,
+            }
+        )
+    return {"types": types}
+
+
+class PriceCalculateRequest(BaseModel):
+    """Body for dynamic price calculation."""
+
+    space_type: str
+    start_datetime: str
+    end_datetime: str
+
+
+@app.post("/api/parking/calculate-price")
+def calculate_price_endpoint(request: PriceCalculateRequest):
+    """
+    Calculate total INR cost for a booking before confirmation.
+
+    Returns total cost, duration breakdown, and unit price.
+    Called by the frontend as soon as the user selects a time range.
+    """
+    try:
+        total, label, unit = sql_store.calculate_price(request.space_type, request.start_datetime, request.end_datetime)
+        return {
+            "space_type": request.space_type,
+            "total_inr": total,
+            "duration_label": label,
+            "unit_price": unit,
+            "currency": "INR",
+            "formatted": f"\u20b9{total:,.0f}",
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Price calculation failed: {exc}")
+
+
+@app.post("/api/parking/check-availability")
+def check_availability_endpoint(space_type: str):
+    """
+    Check if slots are available for a specific parking type.
+    Returns availability details and alternative suggestions when full.
+    """
+    avail = sql_store.check_availability(space_type)
+    alternatives = []
+    if not avail["is_available"]:
+        summary = sql_store.get_total_availability()
+        for alt_type, counts in summary.items():
+            if alt_type != space_type and counts["available"] > 0:
+                meta = _PARKING_TYPE_META.get(alt_type, {})
+                alternatives.append(
+                    {
+                        "space_type": alt_type,
+                        "name": meta.get("name", alt_type.title()),
+                        "available": counts["available"],
+                        "hourly_price": meta.get("hourly_price"),
+                    }
+                )
+    avail["alternatives"] = alternatives
+    return avail
 
 
 # ========================
@@ -495,6 +678,12 @@ async def admin_approve_reservation(reservation_id: int, request: AdminActionReq
         reservation_id,
         mask_email(reservation.get("email", "")),
     )
+
+    # Decrement availability, then notify & MCP (same as PUT approve)
+    try:
+        sql_store.update_availability(reservation["space_type"], delta=-1)
+    except Exception as e:
+        logger.warning("Slot availability update failed for #%d: %s", reservation_id, e)
 
     # Notify user via email (async, non-blocking)
     try:

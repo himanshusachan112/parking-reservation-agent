@@ -1,107 +1,509 @@
+# ParkSmart Hyderabad – Parking Information Database
+
 ## General Information
 
-ParkSmart is a modern automated parking facility located in the heart of downtown. Our parking complex offers 500 parking spaces spread across 5 floors, including dedicated spots for electric vehicles, disabled persons, and VIP members.
+ParkSmart Hyderabad is a premium smart parking facility designed for professionals, employees, and visitors in Hyderabad’s HITEC City business district. Located near the EPAM Hyderabad Office and major IT hubs, ParkSmart provides secure, automated, and AI-enabled parking services for cars, electric vehicles, bikes, and corporate fleets.
 
-Our facility is equipped with state-of-the-art security systems including 24/7 CCTV surveillance, automated license plate recognition, and on-site security personnel. We provide both short-term and long-term parking solutions for cars, motorcycles, and small vans.
+The facility operates with modern smart parking infrastructure including:
 
-## Location
+* AI-powered parking management
+* Automated entry/exit barriers
+* License plate recognition system
+* Real-time parking availability tracking
+* 24/7 CCTV surveillance
+* Smart EV charging stations
+* Emergency assistance support
 
-ParkSmart Parking Complex
-Address: 123 Main Street, Downtown Business District, City Center
-GPS Coordinates: 40.7128° N, 74.0060° W
+ParkSmart Hyderabad is especially designed for:
 
-Nearby Landmarks:
-- City Central Mall (50 meters)
-- Metro Station Line A - Exit 3 (100 meters)
-- Downtown Business Tower (200 meters)
-- City Hospital (500 meters)
+* IT employees
+* Corporate visitors
+* Daily commuters
+* Long-term subscribers
+* Event parking visitors
+
+Total Parking Capacity:
+
+* 650 Parking Slots
+* 6 Parking Floors
+* Dedicated EV & VIP Sections
+
+---
+
+# Location
+
+## ParkSmart Hyderabad Smart Parking Hub
+
+Address:
+ParkSmart Tower Parking Complex,
+Near EPAM Systems Hyderabad,
+Mindspace IT Park,
+HITEC City,
+Madhapur,
+Hyderabad,
+Telangana – 500081,
+India
+
+Google Maps Landmark:
+
+* EPAM Systems Hyderabad Office
+* Inorbit Mall
+* Cyber Towers
+* DLF IT Park
+* Raheja Mindspace
+
+Nearby Places:
+
+* EPAM Systems Office – 2 min walk
+* Inorbit Mall – 5 min walk
+* Cyber Towers Metro Station – 7 min walk
+* IKEA Hyderabad – 10 min drive
+* AIG Hospital – 12 min drive
 
 Access Points:
-- Main entrance: Main Street (North side)
-- Secondary entrance: Oak Avenue (East side)
-- Pedestrian exit: Connected to City Central Mall via skybridge on Floor 2
 
-## Parking Space Types
+* Main Vehicle Entry: Mindspace Main Road
+* Secondary Entry: DLF Road Side
+* Pedestrian Exit: Skywalk connected to IT corridor
 
-1. Standard Parking Spaces (350 slots)
-   - Floors 1-3
-   - Suitable for sedans, hatchbacks, and small SUVs
-   - Maximum vehicle dimensions: 5.0m x 2.0m x 1.8m (L x W x H)
+Operating Hours:
 
-2. Large Vehicle Spaces (80 slots)
-   - Floor 4
-   - Suitable for large SUVs, pickup trucks, and small vans
-   - Maximum vehicle dimensions: 6.0m x 2.5m x 2.2m (L x W x H)
+* Open 24/7
+* Entry allowed all days including weekends and public holidays
 
-3. Electric Vehicle Spaces (40 slots)
-   - Floor 2 (Section EV)
-   - Equipped with Level 2 charging stations
-   - Tesla Supercharger compatible
-   - Charging is included in the parking fee
+---
 
-4. Disabled Parking Spaces (20 slots)
-   - Floor 1 (closest to elevators)
-   - Extra-wide spaces for wheelchair accessibility
-   - Requires valid disability permit
+# Parking Categories & Pricing
 
-5. VIP/Reserved Spaces (10 slots)
-   - Floor 1 (Premium Section)
-   - Covered, extra-wide, near the main exit
-   - Available only with monthly subscription
+## 1. Standard Parking
 
-## Booking Process
+Availability:
 
-To reserve a parking space at ParkSmart, follow these steps:
+* 400 Slots
+* Floors P1, P2, P3
 
-1. Provide your first name and last name
-2. Provide your vehicle registration number (license plate)
-3. Specify the reservation period (start date & time, end date & time)
-4. Our system will check availability for your requested period
-5. An administrator will review and confirm your reservation
-6. You will receive a confirmation with your spot number
+Suitable For:
 
-Important Booking Rules:
-- Reservations must be made at least 1 hour in advance
-- Maximum reservation period: 30 days
-- Cancellations are free up to 2 hours before the start time
-- Late cancellations incur a 50% fee
-- No-shows are charged the full amount
+* Hatchbacks
+* Sedans
+* Compact SUVs
 
-## Facilities and Amenities
+Features:
 
-- Elevators on every floor
-- 24/7 security with CCTV monitoring
-- Well-lit areas with motion-sensor lighting
-- Emergency call buttons on every floor
-- Restrooms on Floor 1 and Floor 3
-- Car wash service available (Floor 1, by appointment)
-- Valet parking available during business hours
-- Free WiFi throughout the facility
-- Mobile app for remote parking management
+* CCTV monitored
+* Covered parking
+* Elevator access
+* Smart navigation indicators
 
-## Contact Information
+Pricing:
+
+* ₹50/hour
+* ₹350/day
+* ₹4,500/month subscription
+
+Maximum Vehicle Size:
+
+* Length: 5.0m
+* Width: 2.0m
+* Height: 1.8m
+
+---
+
+## 2. Large Vehicle Parking
+
+Availability:
+
+* 120 Slots
+* Floor P4
+
+Suitable For:
+
+* Large SUVs
+* Pickup Trucks
+* Tempo Travelers
+* Corporate Vans
+
+Features:
+
+* Extra-wide parking lanes
+* High roof clearance
+* Easy maneuvering area
+
+Pricing:
+
+* ₹80/hour
+* ₹550/day
+* ₹7,000/month
+
+Maximum Vehicle Size:
+
+* Length: 6.5m
+* Width: 2.5m
+* Height: 2.5m
+
+---
+
+## 3. Electric Vehicle (EV) Parking
+
+Availability:
+
+* 70 Slots
+* Floor P2 – EV Zone
+
+Supported Vehicles:
+
+* Tata EV
+* MG ZS EV
+* Tesla
+* BYD
+* Ather
+* Ola Electric
+
+Features:
+
+* Fast charging stations
+* Type 2 charging support
+* Battery monitoring
+* Dedicated EV assistance
+
+Pricing:
+
+* ₹120/hour (charging included)
+* ₹800/day
+* ₹9,500/month
+
+Charging Support:
+
+* Fast Charging
+* Tesla Compatible
+* 24/7 Charging Access
+
+---
+
+## 4. Bike Parking Zone
+
+Availability:
+
+* 40 Slots
+* Ground Floor
+
+Suitable For:
+
+* Bikes
+* Scooters
+* Electric Two-Wheelers
+
+Pricing:
+
+* ₹20/hour
+* ₹120/day
+* ₹1,200/month
+
+Features:
+
+* Helmet safety lockers
+* Covered bike area
+* EV bike charging
+
+---
+
+## 5. Disabled Parking Spaces
+
+Availability:
+
+* 10 Slots
+* Near elevators on Ground Floor
+
+Requirements:
+
+* Valid disability permit required
+
+Features:
+
+* Wheelchair accessibility
+* Extra-wide parking
+* Elevator priority access
+
+Pricing:
+
+* ₹30/hour
+* Special discounts available
+
+---
+
+## 6. VIP Premium Parking
+
+Availability:
+
+* 10 Premium Slots
+* Ground Floor Premium Zone
+
+Suitable For:
+
+* Corporate executives
+* Premium members
+* Reserved access holders
+
+Features:
+
+* Covered premium area
+* Closest to exit gate
+* Dedicated valet support
+* High-security monitoring
+
+Pricing:
+
+* ₹200/hour
+* ₹1,500/day
+* ₹18,000/month membership
+
+---
+
+# Real-Time Parking Availability
+
+Typical Availability:
+
+* Morning (7 AM – 10 AM): Moderate
+* Office Hours (10 AM – 6 PM): High Occupancy
+* Evening (6 PM – 9 PM): Peak Hours
+* Late Night: High Availability
+
+Weekend Occupancy:
+
+* Mostly available except mall/event days
+
+Users can ask:
+
+* Current slot availability
+* Available parking types
+* EV charger availability
+* Peak traffic timings
+* Recommended parking floors
+
+---
+
+# Reservation Process
+
+To reserve a parking space:
+
+1. Enter your full name
+2. Provide email address
+3. Enter vehicle registration number
+4. Select parking type
+5. Select booking start date & time
+6. Select booking end date & time
+7. Confirm reservation details
+
+After reservation:
+
+* Admin reviews request
+* User receives email confirmation/rejection
+* Approved reservations receive parking slot number
+
+Booking Rules:
+
+* Booking must be done at least 30 minutes in advance
+* Maximum reservation duration: 30 days
+* Free cancellation up to 2 hours before booking
+* Late cancellation charges may apply
+
+---
+
+# Security Features
+
+ParkSmart Hyderabad provides:
+
+* 24/7 AI CCTV Monitoring
+* Number Plate Recognition
+* Security Guards
+* Fire Safety Systems
+* Emergency SOS Buttons
+* RFID-based access control
+* Visitor tracking
+
+Security Questions Users May Ask:
+
+* Is parking secure?
+* Is CCTV available?
+* Are guards available at night?
+* Is overnight parking safe?
+* Is vehicle theft protection available?
+
+---
+
+# Facilities & Amenities
+
+Available Amenities:
+
+* Free WiFi
+* Clean washrooms
+* Elevator access
+* Drinking water
+* Waiting lounge
+* EV charging stations
+* Car wash services
+* Valet parking
+* Tire air check station
+* Emergency jump-start support
+
+Additional Services:
+
+* Monthly subscriptions
+* Corporate parking plans
+* Event parking management
+* Priority reservations
+
+---
+
+# Payment Methods
+
+Accepted Payments:
+
+* UPI (PhonePe, Google Pay, Paytm)
+* Credit Cards
+* Debit Cards
+* Apple Pay
+* Google Pay
+* Net Banking
+* Corporate invoicing
+* Cash at kiosk
+
+Users can ask:
+
+* Is UPI accepted?
+* Is cash allowed?
+* Are refunds available?
+* Is GST invoice provided?
+
+---
+
+# Corporate Membership Plans
+
+## Silver Plan
+
+* Reserved standard parking
+* Monthly billing
+* ₹4,000/month
+
+## Gold Plan
+
+* Premium parking access
+* Priority booking
+* ₹8,000/month
+
+## Platinum Plan
+
+* VIP reserved slots
+* Free valet service
+* EV charging discounts
+* ₹15,000/month
+
+---
+
+# Contact Information
 
 Customer Support:
-- Phone: +1-555-PARK-123 (Available 24/7)
-- Email: support@parksmart.com
-- Live Chat: Available on our website www.parksmart.com
 
-For reservations: reservations@parksmart.com
-For complaints: feedback@parksmart.com
+* Phone: +91 7985819872
+* WhatsApp Support: +91-7985819872
+* Email: [support@parksmart.in](mailto:support@parksmart.in)
 
-## Payment Methods
+Reservation Queries:
 
-We accept the following payment methods:
-- Credit/Debit Cards (Visa, MasterCard, American Express)
-- Mobile payments (Apple Pay, Google Pay)
-- Monthly invoicing (for corporate accounts)
-- Cash (at the exit booth only)
+* [reservations@parksmart.in](mailto:reservations@parksmart.in)
 
-## Policies
+Corporate Queries:
 
-- No overnight sleeping in vehicles
-- No vehicle maintenance or repairs in the parking area
-- Speed limit: 10 km/h inside the facility
-- Horn usage is prohibited inside the building
-- ParkSmart is not responsible for valuables left in vehicles
-- All vehicles must have valid insurance
+* [corporate@parksmart.in](mailto:corporate@parksmart.in)
+
+Emergency Helpline:
+
+* +91-40-9999-0000
+
+Website:
+
+* [www.parksmart.in](http://www.parksmart.in)
+
+Support Availability:
+
+* 24/7 Customer Assistance
+
+---
+
+# Frequently Asked Questions (FAQ)
+
+## What are the parking charges?
+
+Pricing depends on parking type:
+
+* Standard: ₹50/hour
+* Large Vehicle: ₹80/hour
+* EV Parking: ₹120/hour
+* VIP Parking: ₹200/hour
+
+## Is EV charging available?
+
+Yes, fast EV charging stations are available on Floor P2.
+
+## Is overnight parking allowed?
+
+Yes, overnight parking is allowed with valid booking.
+
+## Can I cancel my reservation?
+
+Yes, cancellations are free up to 2 hours before booking.
+
+## Is valet parking available?
+
+Yes, valet parking is available during business hours.
+
+## Are parking spaces covered?
+
+Yes, all parking floors are fully covered.
+
+## Is the parking secure?
+
+Yes, the facility has AI CCTV surveillance and security guards 24/7.
+
+## Can I reserve parking online?
+
+Yes, reservations can be made through the AI chatbot.
+
+---
+
+# Policies & Rules
+
+* Speed limit inside parking: 10 km/h
+* No vehicle servicing inside premises
+* No smoking inside parking areas
+* Dangerous materials prohibited
+* Vehicles must have valid registration
+* Illegal parking may incur penalties
+* ParkSmart is not responsible for valuables inside vehicles
+
+---
+
+# AI Chatbot Supported Queries
+
+Users can ask:
+
+* Parking prices
+* Parking availability
+* EV charging support
+* Booking help
+* Reservation status
+* Working hours
+* Parking location
+* Corporate plans
+* Security information
+* Payment methods
+* Cancellation rules
+* VIP parking details
+* Nearby landmarks
+* Monthly subscriptions
+* Facilities & amenities
+* Valet parking availability
+* Bike parking charges
+* Peak parking timings
+
+The chatbot should answer all these questions using this knowledge base.

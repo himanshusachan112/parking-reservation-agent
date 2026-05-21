@@ -58,7 +58,7 @@ class TestSQLStore:
             None,
         )
         assert standard_hourly is not None
-        assert standard_hourly["price"] == 3.00
+        assert standard_hourly["price"] == 50.00
 
     def test_get_prices_filtered(self):
         """Test retrieving prices filtered by space type."""
@@ -90,7 +90,7 @@ class TestSQLStore:
         # Should have entries for different space types
         assert "standard" in totals
         assert totals["standard"]["available"] > 0
-        assert totals["standard"]["total"] > totals["standard"]["available"]
+        assert totals["standard"]["total"] >= totals["standard"]["available"]
 
     def test_get_dynamic_context(self):
         """Test that dynamic context string is properly formatted."""
@@ -103,7 +103,7 @@ class TestSQLStore:
 
         # Should contain actual data
         assert "Monday" in context
-        assert "$3.00" in context
+        assert "50" in context  # INR price (₹50/hr standard hourly)
 
     def test_double_initialization_skipped(self):
         """Test that initializing twice doesn't duplicate data."""

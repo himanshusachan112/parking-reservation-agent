@@ -76,6 +76,12 @@ class Settings(BaseSettings):
     # Maximum tokens in the response
     llm_max_tokens: int = 1024
 
+    # === CORS Configuration ===
+    # Comma-separated list of allowed frontend origins.
+    # Add your ngrok frontend URL here when running a public demo.
+    # Example: "http://localhost:3000,https://abc123.ngrok-free.app"
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+
     # === Email / SMTP Configuration ===
     smtp_host: str = ""
     smtp_port: int = 465

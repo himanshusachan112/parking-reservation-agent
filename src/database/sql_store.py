@@ -20,9 +20,10 @@ We use SQLite because:
 - Perfect for this scale of data
 """
 
+import math
 import os
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -57,7 +58,7 @@ class WorkingHours(Base):
 class ParkingPrice(Base):
     """
     Stores pricing for different parking space types and durations.
-    Example: Standard parking -> $3/hour, $15/day
+    All prices are in INR (Indian Rupees ₹).
     """
 
     __tablename__ = "parking_prices"
@@ -65,8 +66,8 @@ class ParkingPrice(Base):
     id = Column(Integer, primary_key=True)
     space_type = Column(String, nullable=False)  # "standard", "large", "ev", "vip"
     duration_type = Column(String, nullable=False)  # "hourly", "daily", "weekly", "monthly"
-    price = Column(Float, nullable=False)  # Price in dollars
-    currency = Column(String, default="USD")
+    price = Column(Float, nullable=False)  # Price in INR (₹)
+    currency = Column(String, default="INR")
 
 
 class ParkingAvailability(Base):
@@ -189,11 +190,24 @@ class SQLStore:
         """
         Populate the database with default parking data.
         Call this once when setting up the system.
+
+        If existing pricing data is in USD (legacy), it is automatically
+        replaced with the correct INR values to fix the currency bug.
         """
         session = self.SessionLocal()
         try:
-            # Only initialize if tables are empty
-            if session.query(WorkingHours).count() > 0:
+            # Detect old USD pricing and force re-seed if present
+            std_hourly = session.query(ParkingPrice).filter_by(space_type="standard", duration_type="hourly").first()
+            stale_usd = std_hourly is not None and std_hourly.currency == "USD"
+            if stale_usd:
+                # Clear only pricing + availability (keep hours & reservations)
+                session.query(ParkingPrice).delete()
+                session.query(ParkingAvailability).delete()
+                session.commit()
+                print("  ↻ Migrating pricing from USD → INR...")
+
+            # Only initialize if tables are empty (or just cleared above)
+            if not stale_usd and session.query(WorkingHours).count() > 0:
                 print("Database already initialized.")
                 return
 
@@ -209,41 +223,52 @@ class SQLStore:
             ]
             session.add_all(working_hours)
 
-            # === Pricing ===
+            # === Pricing (all in INR ₹) ===
+            # Source of truth: parking_info.txt — NEVER show USD conversions.
             prices = [
                 # Standard parking
-                ParkingPrice(space_type="standard", duration_type="hourly", price=3.00),
-                ParkingPrice(space_type="standard", duration_type="daily", price=15.00),
-                ParkingPrice(space_type="standard", duration_type="weekly", price=60.00),
-                ParkingPrice(space_type="standard", duration_type="monthly", price=200.00),
+                ParkingPrice(space_type="standard", duration_type="hourly", price=50.00, currency="INR"),
+                ParkingPrice(space_type="standard", duration_type="daily", price=350.00, currency="INR"),
+                ParkingPrice(space_type="standard", duration_type="monthly", price=4500.00, currency="INR"),
                 # Large vehicle
-                ParkingPrice(space_type="large", duration_type="hourly", price=5.00),
-                ParkingPrice(space_type="large", duration_type="daily", price=25.00),
-                ParkingPrice(space_type="large", duration_type="weekly", price=100.00),
-                ParkingPrice(space_type="large", duration_type="monthly", price=350.00),
-                # Electric vehicle
-                ParkingPrice(space_type="ev", duration_type="hourly", price=4.00),
-                ParkingPrice(space_type="ev", duration_type="daily", price=20.00),
-                ParkingPrice(space_type="ev", duration_type="weekly", price=80.00),
-                ParkingPrice(space_type="ev", duration_type="monthly", price=280.00),
-                # VIP
-                ParkingPrice(space_type="vip", duration_type="monthly", price=500.00),
+                ParkingPrice(space_type="large", duration_type="hourly", price=80.00, currency="INR"),
+                ParkingPrice(space_type="large", duration_type="daily", price=550.00, currency="INR"),
+                ParkingPrice(space_type="large", duration_type="monthly", price=7000.00, currency="INR"),
+                # Electric vehicle (charging included)
+                ParkingPrice(space_type="ev", duration_type="hourly", price=120.00, currency="INR"),
+                ParkingPrice(space_type="ev", duration_type="daily", price=800.00, currency="INR"),
+                ParkingPrice(space_type="ev", duration_type="monthly", price=9500.00, currency="INR"),
+                # VIP Premium
+                ParkingPrice(space_type="vip", duration_type="hourly", price=200.00, currency="INR"),
+                ParkingPrice(space_type="vip", duration_type="daily", price=1500.00, currency="INR"),
+                ParkingPrice(space_type="vip", duration_type="monthly", price=18000.00, currency="INR"),
+                # Disabled spaces
+                ParkingPrice(space_type="disabled", duration_type="hourly", price=30.00, currency="INR"),
+                ParkingPrice(space_type="disabled", duration_type="daily", price=120.00, currency="INR"),
+                # Bike parking
+                ParkingPrice(space_type="bike", duration_type="hourly", price=20.00, currency="INR"),
+                ParkingPrice(space_type="bike", duration_type="daily", price=120.00, currency="INR"),
+                ParkingPrice(space_type="bike", duration_type="monthly", price=1200.00, currency="INR"),
             ]
             session.add_all(prices)
 
             # === Availability ===
+            # Totals sourced from parking_info.txt (actual ParkSmart HITEC City data).
+            # available_spaces starts at total — updated on each admin approval.
             availability = [
-                # Floor 1 - Standard (120) + Disabled (20) + VIP (10)
-                ParkingAvailability(floor=1, space_type="standard", total_spaces=120, available_spaces=45),
-                ParkingAvailability(floor=1, space_type="disabled", total_spaces=20, available_spaces=15),
-                ParkingAvailability(floor=1, space_type="vip", total_spaces=10, available_spaces=3),
-                # Floor 2 - Standard (115) + EV (40)
-                ParkingAvailability(floor=2, space_type="standard", total_spaces=115, available_spaces=60),
-                ParkingAvailability(floor=2, space_type="ev", total_spaces=40, available_spaces=22),
-                # Floor 3 - Standard (115)
-                ParkingAvailability(floor=3, space_type="standard", total_spaces=115, available_spaces=80),
-                # Floor 4 - Large (80)
-                ParkingAvailability(floor=4, space_type="large", total_spaces=80, available_spaces=55),
+                # Ground Floor – VIP (10) + Disabled (10) + Bike (40)
+                ParkingAvailability(floor=0, space_type="vip", total_spaces=10, available_spaces=10),
+                ParkingAvailability(floor=0, space_type="disabled", total_spaces=10, available_spaces=10),
+                ParkingAvailability(floor=0, space_type="bike", total_spaces=40, available_spaces=40),
+                # Floor P1 – Standard (135)
+                ParkingAvailability(floor=1, space_type="standard", total_spaces=135, available_spaces=135),
+                # Floor P2 – Standard (130) + EV (70)
+                ParkingAvailability(floor=2, space_type="standard", total_spaces=130, available_spaces=130),
+                ParkingAvailability(floor=2, space_type="ev", total_spaces=70, available_spaces=70),
+                # Floor P3 – Standard (135)
+                ParkingAvailability(floor=3, space_type="standard", total_spaces=135, available_spaces=135),
+                # Floor P4 – Large (120)
+                ParkingAvailability(floor=4, space_type="large", total_spaces=120, available_spaces=120),
             ]
             session.add_all(availability)
 
@@ -382,10 +407,10 @@ class SQLStore:
             status = "Open" if h["is_open"] else "Closed"
             context_parts.append(f"{h['day']}: {h['open_time']} - {h['close_time']} ({status})")
 
-        # Prices
-        context_parts.append("\n=== PARKING PRICES ===")
+        # Prices (INR ₹ — never USD)
+        context_parts.append("\n=== PARKING PRICES (INR) ===")
         for p in prices:
-            context_parts.append(f"{p['space_type'].title()} ({p['duration_type']}): ${p['price']:.2f}")
+            context_parts.append(f"{p['space_type'].title()} ({p['duration_type']}): ₹{p['price']:,.0f}")
 
         # Availability
         context_parts.append("\n=== CURRENT AVAILABILITY ===")
@@ -506,6 +531,128 @@ class SQLStore:
             }
         finally:
             session.close()
+
+    # ========================
+    # REAL-TIME SLOT MANAGEMENT
+    # ========================
+
+    def check_availability(self, space_type: str) -> Dict[str, Any]:
+        """
+        Check current slot availability for a parking type.
+
+        Returns a dict with:
+          available  – slots currently free
+          total      – total slots of this type
+          is_available – True if at least one slot is open
+          percentage – availability as 0–100 int
+        """
+        session = self.SessionLocal()
+        try:
+            from sqlalchemy import func
+
+            row = (
+                session.query(
+                    func.sum(ParkingAvailability.available_spaces).label("available"),
+                    func.sum(ParkingAvailability.total_spaces).label("total"),
+                )
+                .filter(ParkingAvailability.space_type == space_type.lower())
+                .first()
+            )
+            available = int(row.available or 0)
+            total = int(row.total or 0)
+            return {
+                "space_type": space_type.lower(),
+                "available": available,
+                "total": total,
+                "is_available": available > 0,
+                "percentage": round((available / total) * 100) if total else 0,
+            }
+        finally:
+            session.close()
+
+    def update_availability(self, space_type: str, delta: int) -> bool:
+        """
+        Adjust available_spaces for a parking type by *delta*.
+
+        Called with delta=-1 on admin approval and delta=+1 on
+        reservation cancellation / expiry.
+
+        Updates the first matching row for the type (lowest floor first).
+        Returns True on success, False if no matching row exists.
+        """
+        session = self.SessionLocal()
+        try:
+            row = (
+                session.query(ParkingAvailability)
+                .filter(ParkingAvailability.space_type == space_type.lower())
+                .order_by(ParkingAvailability.floor)
+                .first()
+            )
+            if not row:
+                return False
+            row.available_spaces = max(0, min(row.total_spaces, row.available_spaces + delta))
+            row.last_updated = datetime.now(timezone.utc)
+            session.commit()
+            return True
+        except Exception as exc:
+            session.rollback()
+            raise exc
+        finally:
+            session.close()
+
+    def calculate_price(self, space_type: str, start_dt: str, end_dt: str) -> Tuple[float, str, float]:
+        """
+        Calculate the INR cost for a booking.
+
+        Pricing tiers (chosen automatically based on duration):
+          < 24 hours → hourly rate × ceil(hours)  (min 1 hour)
+          >= 24 hours but < 30 days → daily rate × ceil(days)
+          >= 30 days → monthly rate × ceil(months)
+
+        Args:
+            space_type: "standard" | "large" | "ev" | "vip" | ...
+            start_dt:   "YYYY-MM-DD HH:MM"
+            end_dt:     "YYYY-MM-DD HH:MM"
+
+        Returns:
+            (total_inr, duration_label, unit_price)
+            e.g. (400.0, "2 hours @ ₹200/hr", 200.0)
+        """
+        fmt = "%Y-%m-%d %H:%M"
+        try:
+            start = datetime.strptime(start_dt, fmt)
+            end = datetime.strptime(end_dt, fmt)
+        except ValueError:
+            # Fallback for datetimes with seconds
+            fmt2 = "%Y-%m-%d %H:%M:%S"
+            start = datetime.strptime(start_dt[:16], "%Y-%m-%d %H:%M")
+            end = datetime.strptime(end_dt[:16], "%Y-%m-%d %H:%M")
+
+        delta = end - start
+        total_seconds = max(delta.total_seconds(), 3600)  # minimum 1 hour
+        total_hours = total_seconds / 3600
+        total_days = total_hours / 24
+
+        prices = self.get_prices(space_type=space_type)
+        price_map = {p["duration_type"]: p["price"] for p in prices}
+
+        if total_days >= 30 and "monthly" in price_map:
+            months = math.ceil(total_days / 30)
+            unit = price_map["monthly"]
+            total = months * unit
+            label = f"{months} month{'s' if months > 1 else ''} @ ₹{unit:,.0f}/month"
+        elif total_hours > 24 and "daily" in price_map:
+            days = math.ceil(total_days)
+            unit = price_map["daily"]
+            total = days * unit
+            label = f"{days} day{'s' if days > 1 else ''} @ ₹{unit:,.0f}/day"
+        else:
+            hours = math.ceil(total_hours)
+            unit = price_map.get("hourly", 0)
+            total = hours * unit
+            label = f"{hours} hour{'s' if hours > 1 else ''} @ ₹{unit:,.0f}/hr"
+
+        return total, label, unit
 
     def update_reservation_status(self, reservation_id: int, status: str, admin_notes: str = None) -> bool:
         """
