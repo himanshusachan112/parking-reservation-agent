@@ -265,8 +265,7 @@ def chat_sessions():
     """List active chat session IDs."""
     return {
         "sessions": [
-            {"session_id": sid, "phase": state.get("conversation_phase", "unknown")}
-            for sid, state in _sessions.items()
+            {"session_id": sid, "phase": state.get("conversation_phase", "unknown")} for sid, state in _sessions.items()
         ]
     }
 

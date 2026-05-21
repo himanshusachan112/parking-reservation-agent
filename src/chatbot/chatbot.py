@@ -118,7 +118,7 @@ class ParkingChatbot:
     @dataclass
     class _SessionContext:
         state: ConversationState = ConversationState.IDLE
-        reservation_data: 'ReservationData' = field(default_factory=lambda: ReservationData())
+        reservation_data: "ReservationData" = field(default_factory=lambda: ReservationData())
         chat_history: list = field(default_factory=list)
 
     def __init__(self):
@@ -161,14 +161,14 @@ class ParkingChatbot:
         self._sessions[self._default_session].state = value
 
     @property
-    def reservation_data(self) -> 'ReservationData':
+    def reservation_data(self) -> "ReservationData":
         return self._sessions[self._default_session].reservation_data
 
     @reservation_data.setter
-    def reservation_data(self, value: 'ReservationData'):
+    def reservation_data(self, value: "ReservationData"):
         self._sessions[self._default_session].reservation_data = value
 
-    def _ctx(self, session_id: str | None = None) -> '_SessionContext':
+    def _ctx(self, session_id: str | None = None) -> "_SessionContext":
         """Get or create the context for a session."""
         sid = session_id or self._default_session
         if sid not in self._sessions:
@@ -207,7 +207,7 @@ class ParkingChatbot:
     # Marker that the LLM returns when it detects a booking intent
     BOOKING_INTENT_MARKER = "INTENT:BOOKING"
 
-    def _handle_general_query(self, message: str, ctx: '_SessionContext') -> str:
+    def _handle_general_query(self, message: str, ctx: "_SessionContext") -> str:
         """
         Handle a message when we're in IDLE state.
 
@@ -231,7 +231,7 @@ class ParkingChatbot:
         # Otherwise, return the LLM's answer directly
         return response
 
-    def _start_reservation(self, ctx: '_SessionContext') -> str:
+    def _start_reservation(self, ctx: "_SessionContext") -> str:
         """Begin the reservation process by asking for the first piece of info."""
         ctx.state = ConversationState.COLLECTING_NAME
         ctx.reservation_data = ReservationData()  # Reset any previous data
@@ -242,7 +242,7 @@ class ParkingChatbot:
             "**Please provide your full name (first name and last name):**"
         )
 
-    def _handle_reservation_flow(self, message: str, ctx: '_SessionContext') -> str:
+    def _handle_reservation_flow(self, message: str, ctx: "_SessionContext") -> str:
         """
         Handle messages during the reservation flow (state machine).
 
@@ -258,10 +258,7 @@ class ParkingChatbot:
         if message.lower() in ["cancel", "stop", "quit", "exit", "cancel booking"]:
             ctx.state = ConversationState.IDLE
             ctx.reservation_data = ReservationData()
-            return (
-                "Booking process cancelled successfully. ✓\n\n"
-                "How else can I help you with parking services?"
-            )
+            return "Booking process cancelled successfully. ✓\n\n" "How else can I help you with parking services?"
 
         if ctx.state == ConversationState.COLLECTING_NAME:
             return self._collect_name(message, ctx)
@@ -282,7 +279,7 @@ class ParkingChatbot:
         ctx.state = ConversationState.IDLE
         return "Something went wrong. Let's start over. How can I help you?"
 
-    def _collect_name(self, message: str, ctx: '_SessionContext') -> str:
+    def _collect_name(self, message: str, ctx: "_SessionContext") -> str:
         """Process the user's name input."""
         parts = message.strip().split()
         if len(parts) < 2:
@@ -297,7 +294,7 @@ class ParkingChatbot:
             f"**Please provide your email address** (for reservation notifications):"
         )
 
-    def _collect_email(self, message: str, ctx: '_SessionContext') -> str:
+    def _collect_email(self, message: str, ctx: "_SessionContext") -> str:
         """Process the user's email input."""
         import re
 
@@ -313,7 +310,7 @@ class ParkingChatbot:
             f"Email: {mask_email(email)} ✓\n\n" f"**Please provide your vehicle registration number (license plate):**"
         )
 
-    def _collect_car(self, message: str, ctx: '_SessionContext') -> str:
+    def _collect_car(self, message: str, ctx: "_SessionContext") -> str:
         """Process the vehicle registration number."""
         car_number = message.strip().upper()
         if len(car_number) < 2:
@@ -332,7 +329,7 @@ class ParkingChatbot:
             "Please type the number or name of your choice:"
         )
 
-    def _collect_space_type(self, message: str, ctx: '_SessionContext') -> str:
+    def _collect_space_type(self, message: str, ctx: "_SessionContext") -> str:
         """Process the space type selection."""
         type_mapping = {
             "1": "standard",
@@ -366,7 +363,7 @@ class ParkingChatbot:
             "Please provide date and time (e.g., '2026-05-10 09:00'):"
         )
 
-    def _collect_start_time(self, message: str, ctx: '_SessionContext') -> str:
+    def _collect_start_time(self, message: str, ctx: "_SessionContext") -> str:
         """Process the start date/time."""
         # Basic validation - try to parse the date
         try:
@@ -394,7 +391,7 @@ class ParkingChatbot:
             "Please provide date and time (e.g., '2026-05-10 18:00'):"
         )
 
-    def _collect_end_time(self, message: str, ctx: '_SessionContext') -> str:
+    def _collect_end_time(self, message: str, ctx: "_SessionContext") -> str:
         """Process the end date/time."""
         try:
             for fmt in ["%Y-%m-%d %H:%M", "%d/%m/%Y %H:%M", "%m/%d/%Y %H:%M", "%Y-%m-%d"]:
@@ -421,7 +418,7 @@ class ParkingChatbot:
             "**Is this correct? (yes/no)**"
         )
 
-    def _handle_confirmation(self, message: str, ctx: '_SessionContext') -> str:
+    def _handle_confirmation(self, message: str, ctx: "_SessionContext") -> str:
         """Handle the user's confirmation of reservation details."""
         if message.lower() in ["yes", "y", "correct", "confirm", "ok"]:
             # Reservation confirmed — save to database as 'pending'
