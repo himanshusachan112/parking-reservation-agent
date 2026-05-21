@@ -19,9 +19,9 @@ HOW TO RUN:
 5. Run: python main.py          (start chatting)
 """
 
-import sys
-import os
 import argparse
+import os
+import sys
 
 # Add project root to path so imports work
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -32,26 +32,29 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from config.settings import settings
-from src.database.vector_store import VectorStore
-from src.database.sql_store import SQLStore
-from src.data.load_data import load_and_split_documents
 from src.chatbot.chatbot import ParkingChatbot
+from src.data.load_data import PARKING_INFO_FILE, has_file_changed, load_and_split_documents, save_file_hash
+from src.database.sql_store import SQLStore
+from src.database.vector_store import VectorStore
 from src.evaluation.evaluator import RAGEvaluator
 
 
-def setup_databases():
+def setup_databases(force_reindex: bool = False):
     """
     Initialize and populate the databases.
-    Run this once when setting up the system for the first time.
-    
+    Run this once when setting up the system for the first time,
+    or whenever parking_info.txt changes.
+
     Steps:
     1. Load parking info text file → Split into chunks
-    2. Create vector store → Add chunks as embeddings
+    2. Create vector store → Add chunks as embeddings (skipped if unchanged)
     3. Create SQL database → Populate with default dynamic data
     """
     print("=" * 50)
     print("  SETTING UP PARKING CHATBOT DATABASES")
     print("=" * 50)
+
+    info_file = str(PARKING_INFO_FILE)
 
     # Step 1: Load and chunk the static parking information
     print("\n[1/3] Loading and chunking parking information...")
@@ -62,18 +65,28 @@ def setup_databases():
     print("\n[2/3] Initializing vector database (Pinecone)...")
     vector_store = VectorStore()
 
-    # Check if already populated
     existing_count = vector_store.get_collection_count()
-    if existing_count > 0:
-        print(f"      Vector store already has {existing_count} documents.")
-        user_input = input("      Re-index? (y/n): ").strip().lower()
-        if user_input == "y":
+    file_changed = has_file_changed(info_file)
+
+    if force_reindex:
+        print("      --reindex flag set — force re-indexing...")
+        if existing_count > 0:
             vector_store.clear()
-            vector_store.add_documents(documents)
-        else:
-            print("      Skipping re-indexing.")
-    else:
         vector_store.add_documents(documents)
+        save_file_hash(info_file)
+    elif file_changed or existing_count == 0:
+        if existing_count > 0:
+            print("      ⚡ parking_info.txt has changed — clearing old index and re-indexing...")
+            vector_store.clear()
+        else:
+            print("      Vector store is empty — indexing for the first time...")
+        vector_store.add_documents(documents)
+        save_file_hash(info_file)
+        print("      ✓ Knowledge base is up to date.")
+    else:
+        print(f"      ✓ No changes detected ({existing_count} docs already indexed). Skipping re-index.")
+        print("        Edit parking_info.txt and re-run '--setup' to update the knowledge base.")
+        print("        Or use '--reindex' to force a full re-index regardless.")
 
     # Step 3: Initialize SQL database
     print("\n[3/3] Initializing SQL database (dynamic data)...")
@@ -89,7 +102,7 @@ def setup_databases():
 def run_evaluation():
     """
     Run the RAG evaluation suite and print the report.
-    
+
     This measures:
     - Response latency (how fast)
     - Retrieval precision and recall (how accurate)
@@ -104,6 +117,7 @@ def run_evaluation():
     sql_store = SQLStore()
 
     from src.chatbot.rag_chain import RAGChain
+
     rag_chain = RAGChain(vector_store=vector_store, sql_store=sql_store)
 
     # Run evaluation
@@ -134,7 +148,7 @@ def run_evaluation():
 def run_chatbot():
     """
     Start the interactive chatbot in the terminal.
-    
+
     The chatbot will:
     - Answer questions about ParkSmart parking
     - Guide users through the reservation process
@@ -199,6 +213,7 @@ def run_admin_panel():
     and approve or reject booking requests.
     """
     from src.agents.admin_agent import run_admin_cli
+
     run_admin_cli()
 
 
@@ -213,6 +228,7 @@ def run_api_server():
     Visit http://localhost:8000/docs for interactive Swagger documentation.
     """
     import uvicorn
+
     print("Starting ParkSmart REST API server...")
     print("Swagger UI: http://localhost:8000/docs")
     print("Press Ctrl+C to stop.\n")
@@ -232,6 +248,7 @@ def run_mcp_server():
     Visit http://localhost:8001/docs for interactive Swagger documentation.
     """
     import uvicorn
+
     print("Starting ParkSmart MCP Server...")
     print("MCP Swagger UI: http://localhost:8001/docs")
     print("Health Check: http://localhost:8001/mcp/health")
@@ -254,7 +271,7 @@ def run_graph_pipeline():
 
     The graph engine handles all the routing — no manual switching needed.
     """
-    from src.graph.pipeline import create_pipeline, run_user_message, run_admin_decision
+    from src.graph.pipeline import create_pipeline, run_admin_decision, run_user_message
     from src.graph.state import PipelinePhase
 
     print("=" * 60)
@@ -276,7 +293,7 @@ def run_graph_pipeline():
         print("Make sure you have run 'python main.py --setup' first.")
         return
 
-    state = None       # Current pipeline state
+    state = None  # Current pipeline state
     admin_mode = False  # Are we in admin review mode?
 
     while True:
@@ -381,19 +398,23 @@ def run_graph_pipeline():
         except Exception as e:
             print(f"\n❌ Error: {e}")
             import traceback
+
             traceback.print_exc()
             print("Type 'reset' to start over or 'quit' to exit.")
 
 
 def main():
     """Parse arguments and run the appropriate command."""
-    parser = argparse.ArgumentParser(
-        description="ParkSmart Parking Space Reservation Chatbot"
-    )
+    parser = argparse.ArgumentParser(description="ParkSmart Parking Space Reservation Chatbot")
     parser.add_argument(
         "--setup",
         action="store_true",
-        help="Initialize databases with parking data (run once)",
+        help="Initialize databases with parking data (run once, auto-detects changes)",
+    )
+    parser.add_argument(
+        "--reindex",
+        action="store_true",
+        help="Force re-index parking_info.txt into Pinecone (even if unchanged)",
     )
     parser.add_argument(
         "--evaluate",
@@ -425,13 +446,15 @@ def main():
 
     if args.setup:
         setup_databases()
+    elif args.reindex:
+        setup_databases(force_reindex=True)
     elif args.evaluate:
         run_evaluation()
     elif args.admin:
         run_admin_panel()
     elif args.server:
         run_api_server()
-    elif getattr(args, 'mcp_server', False):
+    elif getattr(args, "mcp_server", False):
         run_mcp_server()
     elif args.graph:
         run_graph_pipeline()

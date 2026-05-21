@@ -12,6 +12,7 @@ WHY SPLIT DATA?
   is better because it allows precise queries and easy updates
 """
 
+import hashlib
 import os
 from pathlib import Path
 
@@ -21,6 +22,42 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 # Path to the static parking info file
 DATA_DIR = Path(__file__).parent
 PARKING_INFO_FILE = DATA_DIR / "parking_info.txt"
+
+
+# ---------------------------------------------------------------------------
+# File-hash helpers — used to detect changes in parking_info.txt
+# ---------------------------------------------------------------------------
+
+
+def compute_file_hash(file_path: str) -> str:
+    """Return the SHA-256 hex digest of *file_path*."""
+    with open(file_path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def _hash_file_path(data_file_path: str) -> Path:
+    """Return the path where the hash for *data_file_path* is stored."""
+    p = Path(data_file_path)
+    return p.parent / (p.stem + ".hash")
+
+
+def has_file_changed(file_path: str) -> bool:
+    """
+    Return True if *file_path* has changed since the last call to
+    ``save_file_hash()``, or if no hash has been saved yet.
+    """
+    hash_path = _hash_file_path(file_path)
+    current = compute_file_hash(file_path)
+    if not hash_path.exists():
+        return True
+    return hash_path.read_text().strip() != current
+
+
+def save_file_hash(file_path: str) -> None:
+    """Persist the current hash of *file_path* so future calls to
+    ``has_file_changed()`` can detect subsequent edits."""
+    hash_path = _hash_file_path(file_path)
+    hash_path.write_text(compute_file_hash(file_path))
 
 
 def load_and_split_documents(file_path: str = None, chunk_size: int = 500, chunk_overlap: int = 50):
