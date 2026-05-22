@@ -35,9 +35,14 @@ class Settings(BaseSettings):
 
     # === Groq (public LLM API — free tier, works on Render/cloud) ===
     # Get your free key at https://console.groq.com
-    # When GROQ_API_KEY is set, Groq is used instead of EPAM DIAL.
     groq_api_key: str = ""
     groq_model: str = "llama-3.3-70b-versatile"
+
+    # === Google Gemini (free tier, works on Render/cloud) ===
+    # Get your free key at https://aistudio.google.com/apikey
+    # When GOOGLE_API_KEY is set, Gemini is used (takes priority over Groq).
+    google_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
 
     # Which LLM model to use for chat responses
     # gpt-4o for best quality; gpt-4.1-mini-2025-04-14 for cheaper

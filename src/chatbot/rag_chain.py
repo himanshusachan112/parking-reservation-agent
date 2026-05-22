@@ -174,8 +174,16 @@ class RAGChain:
         self.vector_store = vector_store or VectorStore()
         self.sql_store = sql_store or SQLStore()
 
-        # Choose LLM provider: Groq (cloud deployments) or EPAM DIAL (local dev)
-        if settings.groq_api_key:
+        # Choose LLM provider (priority: Gemini → Groq → EPAM DIAL)
+        if settings.google_api_key:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            self.llm = ChatGoogleGenerativeAI(
+                model=settings.gemini_model,
+                google_api_key=settings.google_api_key,
+                temperature=settings.llm_temperature,
+                max_output_tokens=settings.llm_max_tokens,
+            )
+        elif settings.groq_api_key:
             from langchain_groq import ChatGroq
             self.llm = ChatGroq(
                 api_key=settings.groq_api_key,
