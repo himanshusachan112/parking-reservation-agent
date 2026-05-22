@@ -174,16 +174,24 @@ class RAGChain:
         self.vector_store = vector_store or VectorStore()
         self.sql_store = sql_store or SQLStore()
 
-        # Initialize the LLM via EPAM DIAL (Azure OpenAI proxy)
-        # AzureChatOpenAI routes requests through the EPAM DIAL endpoint
-        self.llm = AzureChatOpenAI(
-            azure_deployment=settings.llm_model,
-            azure_endpoint=settings.azure_endpoint,
-            api_key=settings.dial_api_key,
-            api_version=settings.api_version,
-            temperature=settings.llm_temperature,
-            max_tokens=settings.llm_max_tokens,
-        )
+        # Choose LLM provider: Groq (cloud deployments) or EPAM DIAL (local dev)
+        if settings.groq_api_key:
+            from langchain_groq import ChatGroq
+            self.llm = ChatGroq(
+                api_key=settings.groq_api_key,
+                model=settings.groq_model,
+                temperature=settings.llm_temperature,
+                max_tokens=settings.llm_max_tokens,
+            )
+        else:
+            self.llm = AzureChatOpenAI(
+                azure_deployment=settings.llm_model,
+                azure_endpoint=settings.azure_endpoint,
+                api_key=settings.dial_api_key,
+                api_version=settings.api_version,
+                temperature=settings.llm_temperature,
+                max_tokens=settings.llm_max_tokens,
+            )
 
         # Get the retriever from vector store
         self.retriever = self.vector_store.get_retriever(search_kwargs={"k": settings.eval_top_k})

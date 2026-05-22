@@ -33,6 +33,12 @@ class Settings(BaseSettings):
     # Azure OpenAI API version
     api_version: str = "2024-02-01"
 
+    # === Groq (public LLM API — free tier, works on Render/cloud) ===
+    # Get your free key at https://console.groq.com
+    # When GROQ_API_KEY is set, Groq is used instead of EPAM DIAL.
+    groq_api_key: str = ""
+    groq_model: str = "llama-3.3-70b-versatile"
+
     # Which LLM model to use for chat responses
     # gpt-4o for best quality; gpt-4.1-mini-2025-04-14 for cheaper
     llm_model: str = "gpt-4o"
