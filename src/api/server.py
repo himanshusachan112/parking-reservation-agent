@@ -197,10 +197,8 @@ def _startup_db_check() -> None:
         _log.info("─" * 48)
 
         if type_count == 0:
-            _log.warning(
-                "Database empty — run seed script: "
-                "python scripts/seed_parking_data.py"
-            )
+            _log.warning("Database empty — auto-seeding parking types and slots...")
+            _auto_seed(_log)
         else:
             # Sync available_slots counters from actual slot statuses.
             # This corrects any drift caused by crashes, seed resets, or manual edits.
@@ -208,6 +206,34 @@ def _startup_db_check() -> None:
     except Exception as exc:  # pragma: no cover
         _log.warning("Could not query production tables: %s", exc)
         _log.info("─" * 48)
+
+
+def _auto_seed(_log) -> None:
+    """
+    Run automatically on first boot when the database is empty.
+    Seeds parking types and all physical slot rows, then syncs counters.
+    Safe to call multiple times — all operations are idempotent.
+    """
+    try:
+        import sys, os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from scripts.seed_parking_data import seed_parking_types, seed_slots, PARKING_TYPES
+        from src.models.parking_slot import ParkingSlot
+        from src.models.parking_type import ParkingType
+
+        with db_session() as db:
+            types = seed_parking_types(db)
+            created = seed_slots(db, types)
+            # Update total_slots for each type from the actual slot count
+            for pt in db.query(ParkingType).all():
+                total = db.query(ParkingSlot).filter_by(parking_type_id=pt.id).count()
+                pt.total_slots = total
+                pt.available_slots = total  # all freshly seeded slots are available
+
+        _log.info("Auto-seed complete: %d new slot rows created", created)
+        _sync_slot_counters()
+    except Exception as exc:
+        _log.error("Auto-seed failed: %s", exc)
 
 
 def _sync_slot_counters() -> None:
