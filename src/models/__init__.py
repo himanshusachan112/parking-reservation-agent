@@ -4,5 +4,6 @@ from src.models.admin_action import AdminAction
 from src.models.booking import Booking
 from src.models.parking_slot import ParkingSlot
 from src.models.parking_type import ParkingType
+from src.models.payment import Payment
 
-__all__ = ["ParkingType", "ParkingSlot", "Booking", "AdminAction"]
+__all__ = ["ParkingType", "ParkingSlot", "Booking", "AdminAction", "Payment"]

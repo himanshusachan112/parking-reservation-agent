@@ -35,6 +35,7 @@ BOOKING_APPROVED = "approved"
 BOOKING_REJECTED = "rejected"
 BOOKING_CANCELLED = "cancelled"
 BOOKING_COMPLETED = "completed"
+BOOKING_PAID = "paid"  # approved + payment confirmed
 
 VALID_BOOKING_STATUSES = {
     BOOKING_PENDING,
@@ -42,6 +43,7 @@ VALID_BOOKING_STATUSES = {
     BOOKING_REJECTED,
     BOOKING_CANCELLED,
     BOOKING_COMPLETED,
+    BOOKING_PAID,
 }
 
 

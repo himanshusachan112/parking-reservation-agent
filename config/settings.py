@@ -94,6 +94,11 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     admin_email: str = "admin@parksmart.com"
 
+    # === Payment / Frontend URL ===
+    # Base URL of the frontend used to build payment links in emails.
+    # Override in .env: APP_BASE_URL=https://yoursite.com
+    app_base_url: str = "http://localhost:3000"
+
     model_config = ConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

@@ -51,6 +51,13 @@ from src.notifications.email_service import EmailService
 from src.services.booking_service import BookingService, BookingServiceError
 from src.services.booking_validation_service import BookingValidationError
 from src.services.parking_service import ParkingService
+from src.services.payment_service import (
+    AlreadyPaidError,
+    PaymentError,
+    PaymentExpiredError,
+    PaymentNotFoundError,
+    PaymentService,
+)
 from src.utils.logging_config import setup_logging
 from src.utils.masking import mask_email
 
@@ -142,6 +149,7 @@ sql_store.initialize_default_data()
 # Production service layer (PostgreSQL-backed)
 _parking_svc = ParkingService()
 _booking_svc = BookingService()
+_payment_svc = PaymentService()
 
 
 @app.on_event("startup")
@@ -150,6 +158,17 @@ def _startup_db_check() -> None:
     import logging
 
     _log = logging.getLogger(__name__)
+
+    # Ensure payment table exists (idempotent — safe to run every startup)
+    try:
+        from src.database.base import Base
+        from src.database.postgres import get_engine
+        import src.models.payment  # noqa: F401 — registers Payment with Base.metadata
+
+        Base.metadata.create_all(bind=get_engine(), checkfirst=True)
+        _log.info("Payment table ensured (create_all checkfirst=True)")
+    except Exception as _exc:
+        _log.warning("Could not ensure payment table: %s", _exc)
     info = get_db_info()
 
     _log.info("─" * 48)
@@ -559,10 +578,51 @@ def approve_reservation(reservation_id: int, request: AdminActionRequest = None)
         reservation_id, reservation["space_type"].upper(), slot_number or "(legacy)",
     )
 
-    # Notify the user via email about the approval
+    # ── Create payment record and send approval email with payment link ───
+    payment_token: str = ""
+    try:
+        # Calculate the amount for this reservation
+        try:
+            bd = _parking_svc.calculate_price(
+                reservation["space_type"],
+                reservation["start_datetime"],
+                reservation["end_datetime"],
+            )
+            amount_inr = bd["total_inr"]
+        except Exception:
+            try:
+                total, _, _ = sql_store.calculate_price(
+                    reservation["space_type"],
+                    reservation["start_datetime"],
+                    reservation["end_datetime"],
+                )
+                amount_inr = total
+            except Exception:
+                amount_inr = 0.0
+
+        from decimal import Decimal
+        payment_data = _payment_svc.create_payment(
+            reservation_id=reservation_id,
+            amount_inr=Decimal(str(amount_inr)),
+            user_name=f"{reservation['first_name']} {reservation['last_name']}",
+            user_email=reservation.get("email"),
+            vehicle_number=reservation.get("car_number", ""),
+            space_type=reservation["space_type"],
+            start_datetime=reservation["start_datetime"],
+            end_datetime=reservation["end_datetime"],
+        )
+        payment_token = payment_data["payment_token"]
+        _log.info("[APPROVED] Payment created token=%s... amount=₹%.2f", payment_token[:8], amount_inr)
+    except Exception as e:
+        _log.warning("[APPROVED] Payment creation failed (non-fatal): %s", e)
+
+    # Notify the user via email with the payment link
     try:
         updated = sql_store.get_reservation_by_id(reservation_id)
-        email_service.notify_user_status_change(updated)
+        payment_link = (
+            f"{settings.app_base_url}/payment/{payment_token}" if payment_token else ""
+        )
+        email_service.send_user_approval(updated, payment_link=payment_link)
     except Exception as e:
         print(f"⚠ User notification failed: {e}")
 
@@ -1238,6 +1298,7 @@ def admin_dashboard():
         pending = sum(1 for r in res_all if r["status"] == "pending")
         approved = sum(1 for r in res_all if r["status"] == "approved")
         rejected = sum(1 for r in res_all if r["status"] == "rejected")
+        paid = sum(1 for r in res_all if r["status"] == "paid")
 
     return {
         "slot_stats": slot_stats,
@@ -1251,6 +1312,7 @@ def admin_dashboard():
             "pending": pending,
             "approved": approved,
             "rejected": rejected,
+            "paid": paid,
             "total": len(res_all),
         },
     }
@@ -1411,7 +1473,40 @@ async def admin_approve_reservation(reservation_id: int, request: AdminActionReq
     # Notify user via email (async, non-blocking)
     try:
         updated = sql_store.get_reservation_by_id(reservation_id)
-        await email_service.send_user_approval_async(updated)
+
+        # Create payment record and build payment link
+        _pay_token: str = ""
+        try:
+            from decimal import Decimal
+            try:
+                bd = _parking_svc.calculate_price(
+                    reservation["space_type"],
+                    reservation["start_datetime"],
+                    reservation["end_datetime"],
+                )
+                _amount = bd["total_inr"]
+            except Exception:
+                _amount, _, _ = sql_store.calculate_price(
+                    reservation["space_type"],
+                    reservation["start_datetime"],
+                    reservation["end_datetime"],
+                )
+            pd = _payment_svc.create_payment(
+                reservation_id=reservation_id,
+                amount_inr=Decimal(str(_amount)),
+                user_name=f"{reservation['first_name']} {reservation['last_name']}",
+                user_email=reservation.get("email"),
+                vehicle_number=reservation.get("car_number", ""),
+                space_type=reservation["space_type"],
+                start_datetime=reservation["start_datetime"],
+                end_datetime=reservation["end_datetime"],
+            )
+            _pay_token = pd["payment_token"]
+        except Exception as _pe:
+            logger.warning("Payment creation failed for #%d (non-fatal): %s", reservation_id, _pe)
+
+        payment_link = f"{settings.app_base_url}/payment/{_pay_token}" if _pay_token else ""
+        await email_service.send_user_approval_async(updated, payment_link=payment_link)
     except Exception as e:
         logger.warning("User approval email failed for #%d: %s", reservation_id, e)
 
@@ -1723,3 +1818,116 @@ def check_booking_availability(request: CheckAvailabilityRequest):
                 if k != request.space_type and v["available"] > 0
             ]
         return avail
+
+
+# ========================
+# PAYMENT ENDPOINTS
+# ========================
+
+
+class PaymentProcessRequest(BaseModel):
+    """Body for POST /api/payment/{token}/process."""
+
+    payment_method: str = Field(
+        ...,
+        json_schema_extra={"example": "upi"},
+        description="One of: upi, card, netbanking, wallet",
+    )
+    # UPI
+    upi_id: Optional[str] = Field(None, json_schema_extra={"example": "user@upi"})
+    # Card
+    card_last4: Optional[str] = Field(None, json_schema_extra={"example": "4242"})
+    card_holder: Optional[str] = Field(None, json_schema_extra={"example": "John Smith"})
+    # Wallet
+    wallet_provider: Optional[str] = Field(None, json_schema_extra={"example": "paytm"})
+
+
+@app.get("/api/payment/{token}", summary="Get payment details by token")
+def get_payment_by_token(token: str):
+    """
+    Return booking details and payment status for the payment page.
+
+    Called by the frontend /payment/[token] page on load to populate the
+    booking summary and determine whether the user can still pay.
+
+    Returns 404 if the token is not recognised.
+    """
+    payment = _payment_svc.get_payment(token)
+    if payment is None:
+        raise HTTPException(status_code=404, detail="Payment link not found or has expired.")
+    return payment
+
+
+@app.post("/api/payment/{token}/process", summary="Process a payment")
+def process_payment(token: str, request: PaymentProcessRequest):
+    """
+    Process a payment via the mock gateway.
+
+    - Validates the token, checks idempotency and expiry.
+    - Marks the payment as 'paid' and stores the transaction ID.
+    - Updates the reservation status to 'paid' in the legacy table.
+    - Sends a payment-confirmation email to the admin.
+
+    Returns the updated payment dict including transaction_id and paid_at.
+
+    Error codes:
+      400 — invalid payment method
+      404 — token not found
+      409 — already paid (idempotency guard)
+      410 — payment link expired
+    """
+    try:
+        payment = _payment_svc.process_payment(
+            token=token,
+            payment_method=request.payment_method,
+            upi_id=request.upi_id,
+            card_last4=request.card_last4,
+            wallet_provider=request.wallet_provider,
+        )
+    except PaymentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except AlreadyPaidError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except PaymentExpiredError as exc:
+        raise HTTPException(status_code=410, detail=str(exc))
+    except PaymentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    # Update the legacy reservation status to 'paid'
+    try:
+        sql_store.update_reservation_status(
+            payment["reservation_id"], "paid", "Payment completed online"
+        )
+        _log.info("[payment] Reservation #%d status → paid", payment["reservation_id"])
+    except Exception as e:
+        _log.warning("[payment] Could not update legacy reservation status: %s", e)
+
+    # Notify admin about the payment
+    try:
+        email_service.send_payment_confirmation_to_admin(payment)
+    except Exception as e:
+        _log.warning("[payment] Admin payment notification failed (non-fatal): %s", e)
+
+    return payment
+
+
+@app.get("/api/payment/{token}/status", summary="Poll payment status")
+def get_payment_status(token: str):
+    """
+    Lightweight status-only poll for the frontend to check after redirect.
+
+    Returns { status, transaction_id, paid_at } without full booking details.
+    """
+    payment = _payment_svc.get_payment(token)
+    if payment is None:
+        raise HTTPException(status_code=404, detail="Payment link not found.")
+    return {
+        "token": token,
+        "status": payment["status"],
+        "transaction_id": payment.get("transaction_id"),
+        "paid_at": payment.get("paid_at"),
+        "amount_inr": payment.get("amount_inr"),
+        "is_payable": payment.get("is_payable", False),
+        "is_expired": payment.get("is_expired", False),
+    }
+

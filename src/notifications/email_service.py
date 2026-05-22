@@ -213,17 +213,19 @@ class EmailService:
     # User notification (approval / rejection)
     # ──────────────────────────────────────────────────
 
-    def send_user_approval(self, reservation: Dict[str, Any]) -> bool:
+    def send_user_approval(self, reservation: Dict[str, Any], payment_link: str = "") -> bool:
         """
-        Send an approval email to the user with parking instructions.
+        Send an approval email to the user with parking instructions and
+        an optional payment link.
 
         Args:
-            reservation: Dict with reservation details (status must be 'approved').
+            reservation:   Dict with reservation details (status must be 'approved').
+            payment_link:  Full URL to the payment page (empty string to omit).
 
         Returns:
             True if sent/logged successfully.
         """
-        return self._send_user_notification(reservation, "approved")
+        return self._send_user_notification(reservation, "approved", payment_link=payment_link)
 
     def send_user_rejection(self, reservation: Dict[str, Any]) -> bool:
         """
@@ -252,7 +254,12 @@ class EmailService:
             logger.warning("notify_user_status_change called with status=%s", status)
             return False
 
-    def _send_user_notification(self, reservation: Dict[str, Any], status: str) -> bool:
+    def _send_user_notification(
+        self,
+        reservation: Dict[str, Any],
+        status: str,
+        payment_link: str = "",
+    ) -> bool:
         """Internal helper for user approval/rejection emails."""
         user_email = reservation.get("email")
         rid = reservation.get("id", "?")
@@ -263,13 +270,13 @@ class EmailService:
             return False
 
         if not self.is_configured:
-            return self._log_to_console("USER", reservation, status)
+            return self._log_to_console("USER", reservation, status, payment_link=payment_link)
 
         try:
             if status == "approved":
                 subject = f"ParkSmart — Reservation #{rid} Approved ✅"
-                html_body = self._build_user_approval_html(reservation)
-                plain_body = self._build_user_approval_text(reservation)
+                html_body = self._build_user_approval_html(reservation, payment_link=payment_link)
+                plain_body = self._build_user_approval_text(reservation, payment_link=payment_link)
             else:
                 subject = f"ParkSmart — Reservation #{rid} Update"
                 html_body = self._build_user_rejection_html(reservation)
@@ -281,11 +288,15 @@ class EmailService:
         except Exception as exc:
             logger.error("User email failed for #%s: %s", rid, exc)
             print(f"⚠ User email failed: {exc}. Falling back to console.")
-            return self._log_to_console("USER", reservation, status)
+            return self._log_to_console("USER", reservation, status, payment_link=payment_link)
 
-    async def send_user_approval_async(self, reservation: Dict[str, Any]) -> bool:
+    async def send_user_approval_async(
+        self, reservation: Dict[str, Any], payment_link: str = ""
+    ) -> bool:
         """Async version of send_user_approval."""
-        return await asyncio.get_event_loop().run_in_executor(None, self.send_user_approval, reservation)
+        return await asyncio.get_event_loop().run_in_executor(
+            None, self.send_user_approval, reservation, payment_link
+        )
 
     async def send_user_rejection_async(self, reservation: Dict[str, Any]) -> bool:
         """Async version of send_user_rejection."""
@@ -300,6 +311,7 @@ class EmailService:
         audience: str,
         reservation: Dict[str, Any],
         status: str = None,
+        payment_link: str = "",
     ) -> bool:
         """Print a structured notification to the console."""
         rid = reservation.get("id", "?")
@@ -332,6 +344,8 @@ class EmailService:
             print(f"  Period:  {reservation.get('start_datetime', '')} → {reservation.get('end_datetime', '')}")
             if reservation.get("admin_notes"):
                 print(f"  Notes:   {reservation.get('admin_notes')}")
+            if payment_link:
+                print(f"  💳 PAYMENT LINK: {payment_link}")
         print("=" * 55 + "\n")
         return True
 
@@ -419,10 +433,19 @@ class EmailService:
     # User approval email builders
     # ──────────────────────────────────────────────────
 
-    def _build_user_approval_text(self, reservation: Dict[str, Any]) -> str:
+    def _build_user_approval_text(
+        self, reservation: Dict[str, Any], payment_link: str = ""
+    ) -> str:
         approved_at = reservation.get("approved_at") or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         notes = reservation.get("admin_notes", "")
         notes_line = f"  Admin Notes: {notes}\n" if notes else ""
+        payment_section = (
+            f"\n💳 COMPLETE YOUR PAYMENT\n"
+            f"  {'=' * 38}\n"
+            f"  To confirm your parking slot, please complete payment:\n"
+            f"  {payment_link}\n"
+            f"  This link expires in 7 days.\n"
+        ) if payment_link else ""
         return (
             f"ParkSmart — Reservation Approved!\n"
             f"{'=' * 40}\n\n"
@@ -434,7 +457,8 @@ class EmailService:
             f"  Start: {reservation.get('start_datetime', '')}\n"
             f"  End: {reservation.get('end_datetime', '')}\n"
             f"  Approved At: {approved_at}\n"
-            f"{notes_line}\n"
+            f"{notes_line}"
+            f"{payment_section}\n"
             f"Parking Instructions:\n"
             f"  1. Enter via the main gate on 123 Main Street\n"
             f"  2. Show your reservation ID (#{reservation.get('id', '?')}) at the barrier\n"
@@ -443,11 +467,33 @@ class EmailService:
             f"Thank you for choosing ParkSmart!\n"
         )
 
-    def _build_user_approval_html(self, reservation: Dict[str, Any]) -> str:
+    def _build_user_approval_html(
+        self, reservation: Dict[str, Any], payment_link: str = ""
+    ) -> str:
         approved_at = reservation.get("approved_at") or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         notes = reservation.get("admin_notes", "")
         notes_html = f"<p><strong>Admin Notes:</strong> {notes}</p>" if notes else ""
         space = reservation.get("space_type", "standard").upper()
+        payment_html = ""
+        if payment_link:
+            payment_html = f"""
+                <div style="margin-top: 25px; padding: 20px; background: linear-gradient(135deg, #1B2A4A, #2563EB);
+                            border-radius: 10px; text-align: center;">
+                    <h3 style="color: white; margin: 0 0 8px;">💳 Complete Your Payment</h3>
+                    <p style="color: #CBD5E1; margin: 0 0 16px; font-size: 14px;">
+                        Your slot is reserved. Complete payment to confirm your booking.
+                    </p>
+                    <a href="{payment_link}"
+                       style="display: inline-block; background-color: #22C55E; color: white;
+                              text-decoration: none; padding: 14px 36px; border-radius: 8px;
+                              font-size: 16px; font-weight: bold; letter-spacing: 0.5px;">
+                        Pay Now →
+                    </a>
+                    <p style="color: #94A3B8; font-size: 12px; margin: 12px 0 0;">
+                        This payment link is valid for 7 days. Multiple payment methods supported:
+                        UPI · Credit/Debit Card · Net Banking · Wallets
+                    </p>
+                </div>"""
         return f"""
         <html>
         <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -482,6 +528,7 @@ class EmailService:
                     </tr>
                 </table>
                 {notes_html}
+                {payment_html}
                 <div style="margin-top: 20px; padding: 15px; background-color: #E8F5E9; border-left: 4px solid #4CAF50;">
                     <strong>🅿️ Parking Instructions</strong><br>
                     <ol style="margin: 10px 0; padding-left: 20px;">
@@ -552,6 +599,176 @@ class EmailService:
                 </table>
                 <p style="margin-top: 15px;">You are welcome to submit a new reservation for a different time slot.</p>
                 <p style="color: #777;">Thank you for your understanding.<br>— The ParkSmart Team</p>
+            </div>
+        </body>
+        </html>
+        """
+
+    # ──────────────────────────────────────────────────
+    # Payment confirmation (admin notification)
+    # ──────────────────────────────────────────────────
+
+    def send_payment_confirmation_to_admin(self, payment: Dict[str, Any]) -> bool:
+        """
+        Notify the admin that a user has completed payment.
+
+        Args:
+            payment: Dict returned by PaymentRepository.to_dict().
+
+        Returns:
+            True if sent/logged successfully.
+        """
+        if not self.is_configured:
+            return self._log_payment_to_console(payment)
+
+        try:
+            subject = (
+                f"ParkSmart — Payment Received for Reservation "
+                f"#{payment.get('reservation_id', '?')} 💳"
+            )
+            html_body = self._build_payment_confirmation_html(payment)
+            plain_body = self._build_payment_confirmation_text(payment)
+            self.send_email(self.admin_email, subject, html_body, plain_body)
+            print(
+                f"✓ Payment confirmation sent to {mask_email(self.admin_email)} "
+                f"for reservation #{payment.get('reservation_id', '?')}"
+            )
+            return True
+        except Exception as exc:
+            logger.error("Admin payment notification failed: %s — falling back to console.", exc)
+            return self._log_payment_to_console(payment)
+
+    async def send_payment_confirmation_to_admin_async(
+        self, payment: Dict[str, Any]
+    ) -> bool:
+        """Async version of send_payment_confirmation_to_admin."""
+        return await asyncio.get_event_loop().run_in_executor(
+            None, self.send_payment_confirmation_to_admin, payment
+        )
+
+    def _log_payment_to_console(self, payment: Dict[str, Any]) -> bool:
+        """Print payment confirmation to console in console-fallback mode."""
+        rid = payment.get("reservation_id", "?")
+        raw_email = payment.get("user_email", "N/A")
+        masked = mask_email(raw_email) if raw_email and raw_email != "N/A" else "N/A"
+        paid_at = payment.get("paid_at", "unknown")
+        print("\n" + "=" * 55)
+        print("  💳 PAYMENT CONFIRMATION (console mode)")
+        print("=" * 55)
+        print(f"  Reservation #{rid} — PAYMENT RECEIVED!")
+        print(f"  Customer:    {payment.get('user_name', 'N/A')}")
+        print(f"  Email:       {masked}")
+        print(f"  Vehicle:     {payment.get('vehicle_number', 'N/A')}")
+        print(f"  Space:       {payment.get('space_type', 'N/A').upper()}")
+        print(f"  Period:      {payment.get('start_datetime', '')} → {payment.get('end_datetime', '')}")
+        print(f"  Amount:      ₹{payment.get('amount_inr', 0):,.2f}")
+        print(f"  Method:      {payment.get('payment_method', 'N/A').upper()}")
+        print(f"  Txn ID:      {payment.get('transaction_id', 'N/A')}")
+        print(f"  Paid At:     {paid_at}")
+        print("=" * 55 + "\n")
+        return True
+
+    def _build_payment_confirmation_text(self, payment: Dict[str, Any]) -> str:
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        return (
+            f"Payment Received — Booking #{payment.get('reservation_id', '?')}\n"
+            f"{'=' * 40}\n\n"
+            f"A customer has successfully completed payment.\n\n"
+            f"Customer:       {payment.get('user_name', 'N/A')}\n"
+            f"Email:          {payment.get('user_email', 'N/A')}\n"
+            f"Vehicle:        {payment.get('vehicle_number', 'N/A')}\n"
+            f"Parking Type:   {payment.get('space_type', 'N/A').upper()}\n"
+            f"Start:          {payment.get('start_datetime', '')}\n"
+            f"End:            {payment.get('end_datetime', '')}\n"
+            f"\nPayment Details:\n"
+            f"  Amount:       ₹{payment.get('amount_inr', 0):,.2f} INR\n"
+            f"  Method:       {payment.get('payment_method', 'N/A').upper()}\n"
+            f"  Transaction:  {payment.get('transaction_id', 'N/A')}\n"
+            f"  Paid At:      {payment.get('paid_at', now)}\n"
+            f"\nStatus: PAID ✅ — Slot confirmed for customer.\n"
+        )
+
+    def _build_payment_confirmation_html(self, payment: Dict[str, Any]) -> str:
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        paid_at = payment.get("paid_at") or now
+        method = (payment.get("payment_method") or "N/A").upper()
+        amount = payment.get("amount_inr", 0)
+        try:
+            amount_fmt = f"₹{float(amount):,.2f}"
+        except (TypeError, ValueError):
+            amount_fmt = f"₹{amount}"
+        return f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <div style="background-color: #1B2A4A; padding: 20px; text-align: center;">
+                <h1 style="color: white; margin: 0;">🚗 ParkSmart</h1>
+                <p style="color: #64B5F6; margin: 5px 0;">Payment Confirmation</p>
+            </div>
+            <div style="padding: 20px; background-color: #f5f5f5;">
+                <h2 style="color: #22C55E;">
+                    💳 Payment Received — Reservation #{payment.get('reservation_id', '?')}
+                </h2>
+                <p>A customer has successfully completed payment for their parking booking.</p>
+
+                <h3 style="color: #1B2A4A; border-bottom: 2px solid #e0e0e0; padding-bottom: 6px;">
+                    Booking Details
+                </h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 8px; font-weight: bold; color: #555; width: 40%;">Customer:</td>
+                        <td style="padding: 8px;">{payment.get('user_name', 'N/A')}</td>
+                    </tr>
+                    <tr style="background-color: #e8e8e8;">
+                        <td style="padding: 8px; font-weight: bold; color: #555;">Email:</td>
+                        <td style="padding: 8px;">{payment.get('user_email', 'N/A')}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; font-weight: bold; color: #555;">Vehicle:</td>
+                        <td style="padding: 8px;">{payment.get('vehicle_number', 'N/A')}</td>
+                    </tr>
+                    <tr style="background-color: #e8e8e8;">
+                        <td style="padding: 8px; font-weight: bold; color: #555;">Parking Type:</td>
+                        <td style="padding: 8px;">{(payment.get('space_type') or 'N/A').upper()}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; font-weight: bold; color: #555;">Period:</td>
+                        <td style="padding: 8px;">
+                            {payment.get('start_datetime', '')} → {payment.get('end_datetime', '')}
+                        </td>
+                    </tr>
+                </table>
+
+                <h3 style="color: #1B2A4A; border-bottom: 2px solid #e0e0e0; padding-bottom: 6px; margin-top: 20px;">
+                    Payment Details
+                </h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 8px; font-weight: bold; color: #555;">Amount:</td>
+                        <td style="padding: 8px; font-size: 18px; font-weight: bold; color: #22C55E;">
+                            {amount_fmt} INR
+                        </td>
+                    </tr>
+                    <tr style="background-color: #e8e8e8;">
+                        <td style="padding: 8px; font-weight: bold; color: #555;">Method:</td>
+                        <td style="padding: 8px;">{method}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; font-weight: bold; color: #555;">Transaction ID:</td>
+                        <td style="padding: 8px; font-family: monospace;">{payment.get('transaction_id', 'N/A')}</td>
+                    </tr>
+                    <tr style="background-color: #e8e8e8;">
+                        <td style="padding: 8px; font-weight: bold; color: #555;">Paid At:</td>
+                        <td style="padding: 8px;">{paid_at}</td>
+                    </tr>
+                </table>
+
+                <div style="margin-top: 20px; padding: 15px; background-color: #DCFCE7;
+                            border-left: 4px solid #22C55E;">
+                    <strong>✅ Status: PAID — Slot confirmed for customer.</strong>
+                </div>
+                <p style="margin-top: 15px; color: #777; font-size: 12px;">
+                    This is an automated notification from ParkSmart.
+                </p>
             </div>
         </body>
         </html>

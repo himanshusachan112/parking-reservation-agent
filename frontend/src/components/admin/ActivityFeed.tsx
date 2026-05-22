@@ -1,14 +1,15 @@
 "use client";
 
+import React from "react";
 import { motion } from "framer-motion";
-import { CheckCircle2, XCircle, Clock } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, CreditCard } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAdminStore } from "@/store/adminStore";
 import { formatRelativeTime } from "@/lib/helpers";
 import type { Reservation } from "@/types";
 
-const statusConfig = {
+const statusConfig: Record<string, { icon: React.ElementType; color: string; bg: string; label: string }> = {
   approved: {
     icon: CheckCircle2,
     color: "text-emerald-600 dark:text-emerald-400",
@@ -26,6 +27,12 @@ const statusConfig = {
     color: "text-yellow-600 dark:text-yellow-400",
     bg: "bg-yellow-500/10",
     label: "submitted",
+  },
+  paid: {
+    icon: CreditCard,
+    color: "text-blue-600 dark:text-blue-400",
+    bg: "bg-blue-500/10",
+    label: "paid",
   },
 };
 
@@ -71,7 +78,7 @@ function ActivityItem({
   reservation: Reservation;
   index: number;
 }) {
-  const config = statusConfig[r.status];
+  const config = statusConfig[r.status] ?? statusConfig["pending"];
   const Icon = config.icon;
   const timestamp = r.updated_at || r.created_at || "";
 
