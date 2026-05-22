@@ -2,7 +2,7 @@
 <div align="center">
 
 # 🚗 ParkSmart — AI Parking Reservation Platform
-<!-- 
+
 [![Backend CI](https://github.com/sanyam991/parking-chatbot/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/sanyam991/parking-chatbot/actions/workflows/backend-ci.yml)
 [![Frontend CI](https://github.com/sanyam991/parking-chatbot/actions/workflows/frontend-ci.yml/badge.svg)](https://github.com/sanyam991/parking-chatbot/actions/workflows/frontend-ci.yml)
 [![Docker Build](https://github.com/sanyam991/parking-chatbot/actions/workflows/docker-build.yml/badge.svg)](https://github.com/sanyam991/parking-chatbot/actions/workflows/docker-build.yml)
