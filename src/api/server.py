@@ -216,7 +216,10 @@ def _auto_seed(_log) -> None:
     """
     try:
         import sys, os
-        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        # server.py lives at src/api/server.py — project root is 3 levels up
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        if project_root not in sys.path:
+            sys.path.insert(0, project_root)
         from scripts.seed_parking_data import seed_parking_types, seed_slots, PARKING_TYPES
         from src.models.parking_slot import ParkingSlot
         from src.models.parking_type import ParkingType
