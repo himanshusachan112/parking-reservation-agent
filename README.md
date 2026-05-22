@@ -212,6 +212,11 @@ The entire reservation lifecycle is managed by a **LangGraph StateGraph** with 6
 
 **GraphState** — a `TypedDict` with 14 fields — flows through every node. Each node reads relevant fields, performs its work, and returns only the fields it changed. LangGraph merges updates automatically.
 
+<p align="center">
+  <img src="Screenshots/langgraph_workflow.png" alt="LangGraph Workflow" width="80%">
+  <br><em>LangGraph Workflow Visualization</em>
+</p>
+
 | Node | Purpose | Key State Updates |
 |------|---------|-------------------|
 | `user_interaction` | Chatbot Q&A and booking collection | `bot_response`, `is_booking_flow`, `conversation_phase` |
@@ -298,6 +303,11 @@ frontend/src/
 - **Dark/Light theme** via `next-themes` + Tailwind
 - **Responsive layout** with mobile-first design
 
+<p align="center">
+  <img src="Screenshots/frontend_user_ui.png" alt="Frontend User Chat UI" width="80%">
+  <br><em>Chat Interface — User View</em>
+</p>
+
 ---
 
 ## ⚙ Backend Architecture
@@ -358,6 +368,11 @@ parking_info.txt  →  Chunking (500 chars, 50 overlap)
 **What's stored:** Location, facilities, pricing structure, booking rules, cancellation policies, EV charging info, accessibility, security features.
 
 **Why Pinecone over ChromaDB:** Cloud-hosted, zero-ops, scalable, serverless — suitable for production deployment.
+
+<p align="center">
+  <img src="Screenshots/pinecone_vector_db.png" alt="Pinecone Vector DB" width="80%">
+  <br><em>Pinecone Vector Database Index</em>
+</p>
 
 ---
 
@@ -440,6 +455,11 @@ Reservation Event
 - Console fallback when SMTP is not configured
 - Email masking in logs (`sa****@gmail.com`)
 
+<p align="center">
+  <img src="Screenshots/admin_email_received_.png" alt="Admin Email Received" width="60%">
+  <br><em>Email Notification — Admin Receives Booking Request</em>
+</p>
+
 ---
 
 ## 📊 Admin Dashboard
@@ -453,6 +473,11 @@ The admin dashboard (`/admin`) provides a web interface for reservation manageme
 | **Quick Actions** | One-click approve/reject with optional notes |
 | **Real-time Updates** | Auto-refresh after admin actions |
 | **Responsive Design** | Works on desktop and mobile |
+
+<p align="center">
+  <img src="Screenshots/frontend_admin_ui.png" alt="Frontend Admin Dashboard" width="80%">
+  <br><em>Admin Dashboard — Reservation Management</em>
+</p>
 
 ---
 
@@ -468,6 +493,11 @@ The admin dashboard (`/admin`) provides a web interface for reservation manageme
 | **MCP** | API key authentication | `X-MCP-API-KEY` header validation |
 | **Docker** | Non-root container user | `parksmart` user with limited permissions |
 | **Config** | Secret management | Pydantic Settings from `.env` (never committed) |
+
+<p align="center">
+  <img src="Screenshots/blocking_sesnitive_info.png" alt="Guardrails Blocking Sensitive Info" width="80%">
+  <br><em>Guardrails — Prompt Injection / PII Blocked</em>
+</p>
 
 ---
 
@@ -551,6 +581,11 @@ Build Frontend Image ──┘        │
                            health check verification
 ```
 
+<p align="center">
+  <img src="Screenshots/git_CI-CD_passes.png" alt="CI/CD Pipeline Passes" width="80%">
+  <br><em>GitHub Actions — All CI/CD Workflows Passing</em>
+</p>
+
 ---
 
 ## 🌍 Terraform Infrastructure
@@ -611,6 +646,11 @@ terraform apply
 | `GET` | `/mcp/health` | No | Health check |
 | `POST` | `/mcp/tools/list` | API Key | Discover available tools |
 | `POST` | `/mcp/tools/call` | API Key | Execute a tool |
+
+<p align="center">
+  <img src="Screenshots/mcp_configured.png" alt="MCP Server Configured" width="80%">
+  <br><em>MCP Tool Server — Configured & Running</em>
+</p>
 
 ---
 
@@ -783,6 +823,20 @@ Copy `.env.example` to `.env` and configure:
 
 ---
 
+## 🗃 Database & Slot Inventory
+
+<p align="center">
+  <img src="Screenshots/parking_db.png" alt="Parking Database" width="80%">
+  <br><em>SQLite Database — Reservations & Dynamic Data</em>
+</p>
+
+<p align="center">
+  <img src="Screenshots/slot_inventory.png" alt="Slot Inventory" width="80%">
+  <br><em>Parking Slot Inventory</em>
+</p>
+
+---
+
 ## 🧪 Testing
 
 ```bash
@@ -824,6 +878,11 @@ python main.py --evaluate
 - In-memory SQLite for database tests
 - Async tests use `@pytest.mark.asyncio`
 - Mock `settings` object, not `os.environ`
+
+<p align="center">
+  <img src="Screenshots/test_evaluator_passes.png" alt="Test Evaluator Passes" width="80%">
+  <br><em>RAG Evaluator — All Tests Passing</em>
+</p>
 
 ---
 
@@ -869,16 +928,56 @@ terraform apply
 
 ## 📸 Screenshots
 
-> Add screenshots to a `docs/screenshots/` directory and reference them here.
+### Project Structure
+![Clean Project Structure](Screenshots/clean_project_structure.png)
 
-| Screen | Description |
-|--------|-------------|
-| `chat-interface.png` | Main chat UI with message bubbles |
-| `admin-dashboard.png` | Admin portal with reservation table |
-| `booking-flow.png` | Step-by-step reservation process |
-| `swagger-ui.png` | Interactive API documentation at `/docs` |
-| `pipeline-status.png` | LangGraph pipeline state display |
-| `email-notification.png` | HTML email notification sample |
+### Chat Interface — User Interaction
+![User Interaction](Screenshots/user_interaction.png)
+
+### Frontend — User Chat UI
+![Frontend User UI](Screenshots/frontend_user_ui.png)
+
+### Booking Flow
+![Booking Flow Started](Screenshots/booking_flow_started.png)
+
+### Admin Dashboard
+![Admin Dashboard](Screenshots/admin_dashboard.png)
+
+### Frontend — Admin UI
+![Frontend Admin UI](Screenshots/frontend_admin_ui.png)
+
+### Booking Approved
+![Booking Approved](Screenshots/booking_approved.png)
+
+### Approved Booking Written to File (MCP)
+![Approved Booking Written](Screenshots/appoved_booking_wriiten.png)
+
+### Admin Email Received
+![Admin Email Received](Screenshots/admin_email_received_.png)
+
+### Guardrails — Blocking Sensitive Info
+![Blocking Sensitive Info](Screenshots/blocking_sesnitive_info.png)
+
+### LangGraph Workflow
+![LangGraph Workflow](Screenshots/langgraph_workflow.png)
+
+### MCP Server Configured
+![MCP Configured](Screenshots/mcp_configured.png)
+
+### Parking Database (SQLite)
+![Parking DB](Screenshots/parking_db.png)
+
+### Slot Inventory
+![Slot Inventory](Screenshots/slot_inventory.png)
+
+### Pinecone Vector Database
+![Pinecone Vector DB](Screenshots/pinecone_vector_db.png)
+
+### CI/CD Pipeline Passing
+![Git CI/CD Passes](Screenshots/git_CI-CD_passes.png)
+
+### RAG Evaluator Tests Passing
+![Test Evaluator Passes](Screenshots/test_evaluator_passes.png)
 
 ---
 
