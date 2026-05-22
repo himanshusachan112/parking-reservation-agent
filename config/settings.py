@@ -67,7 +67,7 @@ class Settings(BaseSettings):
     database_url: str = ""
 
     # CORS allowed origins (comma-separated, no spaces)
-    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000,https://parking-chatbot-mbt9c1lwt-sachansanyam203-gmailcoms-projects.vercel.app"
 
     # === Guardrails Configuration ===
     # Whether to enable PII/sensitive data filtering
