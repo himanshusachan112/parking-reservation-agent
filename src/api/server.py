@@ -216,23 +216,32 @@ def _auto_seed(_log) -> None:
     Safe to call multiple times — all operations are idempotent.
     """
     try:
-        import sys, os
-        # server.py lives at src/api/server.py — project root is 3 levels up
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        if project_root not in sys.path:
-            sys.path.insert(0, project_root)
-        from scripts.seed_parking_data import seed_parking_types, seed_slots, PARKING_TYPES
+        import importlib.util, os
+        # Resolve the seed script by absolute file path — avoids sys.path issues
+        project_root = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        )
+        seed_file = os.path.join(project_root, "scripts", "seed_parking_data.py")
+        _log.info("Auto-seed: loading seed script from %s", seed_file)
+
+        spec = importlib.util.spec_from_file_location("seed_parking_data", seed_file)
+        seed_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(seed_mod)
+
+        seed_parking_types = seed_mod.seed_parking_types
+        seed_slots = seed_mod.seed_slots
+
         from src.models.parking_slot import ParkingSlot
         from src.models.parking_type import ParkingType
 
         with db_session() as db:
             types = seed_parking_types(db)
             created = seed_slots(db, types)
-            # Update total_slots for each type from the actual slot count
+            # Fix total_slots / available_slots counters after seeding
             for pt in db.query(ParkingType).all():
                 total = db.query(ParkingSlot).filter_by(parking_type_id=pt.id).count()
                 pt.total_slots = total
-                pt.available_slots = total  # all freshly seeded slots are available
+                pt.available_slots = total
 
         _log.info("Auto-seed complete: %d new slot rows created", created)
         _sync_slot_counters()
