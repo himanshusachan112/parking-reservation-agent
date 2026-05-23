@@ -208,6 +208,16 @@ def _startup_db_check() -> None:
         _log.warning("Could not query production tables: %s", exc)
         _log.info("─" * 48)
 
+    # ── Eagerly initialize the LangGraph pipeline at startup ──
+    # This loads the chatbot (RAG + LLM), email service, MCP client, and admin
+    # agent NOW so that the first user query responds instantly.
+    _log.info("[STARTUP] Pre-loading LangGraph pipeline...")
+    try:
+        _get_pipeline()
+        _log.info("[STARTUP] Pipeline ready — all components loaded")
+    except Exception as _exc:
+        _log.error("[STARTUP] Pipeline pre-load failed (will retry on first request): %s", _exc)
+
 
 def _auto_seed(_log) -> None:
     """
@@ -276,10 +286,10 @@ _sessions: dict[str, dict] = {}  # session_id -> pipeline_state
 
 
 def _get_pipeline():
-    """Lazy-init the shared LangGraph pipeline."""
+    """Return the shared LangGraph pipeline, initializing it if needed."""
     global _pipeline
     if _pipeline is None:
-        _log.info("[PIPELINE] Initializing LangGraph pipeline (first request)...")
+        _log.info("[PIPELINE] Initializing LangGraph pipeline...")
         try:
             from src.graph.pipeline import create_pipeline
             _pipeline = create_pipeline(sql_store=sql_store, email_service=email_service)
@@ -360,6 +370,7 @@ def chat(request: ChatRequest):
             booking_progress=booking_progress,
         )
     except Exception as e:
+        _log.error("[CHAT] Error processing message: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Chat processing failed: {str(e)}")
 
 
