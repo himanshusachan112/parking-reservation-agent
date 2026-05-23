@@ -92,14 +92,17 @@ def initialize_components(
     _sql_store.initialize_default_data()
     _log.info("[PIPELINE] SQL INIT DONE")
 
-    # ── Stage: Chatbot (HuggingFace embeddings + Pinecone + RAG chain) ─────
-    # HuggingFace model is loaded lazily inside VectorStore.__init__ so the
-    # first instantiation here triggers the torch / sentence-transformers load.
-    # On a cold Render instance this can take 30-90 s; that is expected.
-    _log.info("[PIPELINE] VECTOR STORE + RAG INIT START  (HuggingFace + Pinecone + LLM — may take 30-90s on cold start)")
-    _chatbot = chatbot or ParkingChatbot()
-    _log.info("[PIPELINE] VECTOR STORE DONE")
-    _log.info("[PIPELINE] RAG DONE")
+    # ── Stage: Chatbot ──────────────────────────────────────────────────────
+    # When called from _init_pipeline_background(), a pre-built chatbot in
+    # SQL-only mode is passed here.  Vector store is loaded lazily after
+    # the pipeline is marked ready, then hot-swapped via RAGChain.set_vector_store().
+    if chatbot is not None:
+        _log.info("[PIPELINE] CHATBOT INIT DONE (pre-built SQL-only mode — RAG upgrades lazily)")
+        _chatbot = chatbot
+    else:
+        _log.info("[PIPELINE] CHATBOT INIT START")
+        _chatbot = ParkingChatbot()
+        _log.info("[PIPELINE] CHATBOT INIT DONE")
 
     # ── Stage: Email service ────────────────────────────────────────────────
     _log.info("[PIPELINE] EMAIL SERVICE INIT START")

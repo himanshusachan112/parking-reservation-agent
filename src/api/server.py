@@ -304,52 +304,35 @@ _pipeline_ready = _threading.Event()   # set when pipeline finishes (success OR 
 _pipeline_init_error: Exception | None = None
 _sessions: dict[str, dict] = {}  # session_id -> pipeline_state
 
-# app.state.initialized / app.state.pipeline_error are set inside the thread
-# so that /api/ready and /debug/state can report accurate status.
+# app.state.initialized / app.state.pipeline_error are set inside the thread.
+# app.state.vector_store is None until the lazy VS loader finishes.
+
+# Vector-store lazy-load state ─────────────────────────────────────────────
+_vs_loading: bool = False          # True while the background VS thread is running
+_vs_load_lock = _threading.Lock()  # prevents duplicate VS loading attempts
 
 
 def _init_pipeline_background() -> None:
     """
-    Daemon thread: initialise the AI pipeline stage by stage.
+    Daemon thread: lightweight pipeline init — SQL, chatbot (SQL-only), agents, graph.
 
-    Design rules:
-    - Pre-import ALL heavy libraries in THIS thread before spawning any
-      sub-threads.  If we don't, a sub-thread that times-out while holding
-      the import lock for langchain_huggingface/torch will deadlock THIS
-      thread the next time it tries to import from the same module chain.
-    - Every stage has its own try/except; a stage failure is logged with the
-      full traceback and the whole init is aborted loudly.
-    - _pipeline is assigned ONLY after all stages succeed.
-    - app.state.initialized = True is set ONLY after _pipeline is not None.
-    - _pipeline_ready.set() is called in finally — always — so the frontend
-      is never stuck polling /api/ready forever.
+    Vector store (Pinecone/HuggingFace) is intentionally EXCLUDED from this path.
+    It is heavy (30-90s on cold Render start) and blocks readiness.
+    Instead, it is loaded by _load_vector_store_background() AFTER this thread
+    marks the system ready, so /api/ready returns 200 without waiting for it.
+
+    Flow:
+        SQL → RAG (SQL-only) → Chatbot (SQL-only) → Agents → Graph → READY
+        ↓ (after READY)
+        Vector store loads in background → injected into live RAGChain (hot-swap)
     """
     global _pipeline, _pipeline_init_error
-    import concurrent.futures as _cf
 
     pid = os.getpid()
     tid = _threading.get_ident()
     _log.info("[PIPELINE] START  (PID=%d  TID=%d)", pid, tid)
 
     try:
-        # ── Stage 0: pre-import heavy libraries ─────────────────────────────
-        # torch / sentence-transformers load can take 30-90s on a cold Render
-        # instance.  Doing it HERE (in the pipeline thread) puts the import
-        # lock in THIS thread.  Any sub-thread we spawn later finds the module
-        # already cached in sys.modules → instant import, no deadlock.
-        _log.info("[PIPELINE] PRE-IMPORT START (torch/HuggingFace/Pinecone — may take 60s on cold start)")
-        try:
-            import langchain_huggingface as _lhf  # noqa: F401  triggers torch load
-            _log.info("[PIPELINE] langchain_huggingface ready")
-        except Exception as _e:
-            _log.warning("[PIPELINE] langchain_huggingface unavailable (vector search off): %s", _e)
-        try:
-            import langchain_pinecone as _lpc  # noqa: F401
-            _log.info("[PIPELINE] langchain_pinecone ready")
-        except Exception as _e:
-            _log.warning("[PIPELINE] langchain_pinecone unavailable (vector search off): %s", _e)
-        _log.info("[PIPELINE] PRE-IMPORT DONE")
-
         # ── Stage 1: SQL store ───────────────────────────────────────────────
         _log.info("[PIPELINE] SQL INIT START")
         from src.database.sql_store import SQLStore as _SQLStore  # noqa: PLC0415
@@ -357,37 +340,22 @@ def _init_pipeline_background() -> None:
         _sql.initialize_default_data()
         _log.info("[PIPELINE] SQL INIT DONE")
 
-        # ── Stage 2: Vector store (Pinecone) — non-fatal ────────────────────
-        # Libraries are already in sys.modules from Stage 0, so the sub-thread
-        # here has no import work to do — it only makes a network call to Pinecone.
-        _log.info("[PIPELINE] VECTOR STORE INIT START")
-        _vs = None
-        try:
-            from src.database.vector_store import VectorStore as _VS  # noqa: PLC0415
-            with _cf.ThreadPoolExecutor(max_workers=1) as _pool:
-                _vs = _pool.submit(_VS).result(timeout=30)
-            _log.info("[PIPELINE] VECTOR STORE INIT DONE")
-        except _cf.TimeoutError:
-            _log.warning("[PIPELINE] VECTOR STORE TIMEOUT after 30s — SQL-only mode")
-        except Exception as _ve:
-            _log.warning("[PIPELINE] VECTOR STORE FAILED (SQL-only mode): %s", _ve)
-            _log.debug("[PIPELINE] Vector store traceback:\n%s", _traceback.format_exc())
-
-        # ── Stage 3: RAG chain ───────────────────────────────────────────────
-        _log.info("[PIPELINE] RAG INIT START")
+        # ── Stage 2: RAG chain (SQL-only — no VectorStore yet) ───────────────
+        # Vector store will be injected later via RAGChain.set_vector_store().
+        _log.info("[PIPELINE] RAG INIT START (SQL-only mode — vector store loads lazily after ready)")
         from src.chatbot.rag_chain import RAGChain  # noqa: PLC0415
-        _rag = RAGChain(vector_store=_vs, sql_store=_sql)
+        _rag = RAGChain(vector_store=None, sql_store=_sql)
         _log.info("[PIPELINE] RAG DONE")
 
-        # ── Stage 4: Chatbot (passes pre-built VectorStore → skips duplicate init) ─
+        # ── Stage 3: Chatbot ─────────────────────────────────────────────────
         _log.info("[PIPELINE] CHATBOT INIT START")
         from src.chatbot.chatbot import ParkingChatbot  # noqa: PLC0415
-        _bot = ParkingChatbot(vector_store=_vs)   # _vs may be None → SQL-only mode
+        _bot = ParkingChatbot(vector_store=None)
         _bot.sql_store = _sql
-        _bot.rag_chain = _rag  # use the RAG chain we already built above
+        _bot.rag_chain = _rag
         _log.info("[PIPELINE] CHATBOT INIT DONE")
 
-        # ── Stage 5: Email service & MCP client ─────────────────────────────
+        # ── Stage 4: Email service & MCP client ─────────────────────────────
         _log.info("[PIPELINE] EMAIL + MCP INIT START")
         from src.notifications.email_service import EmailService as _EmailSvc  # noqa: PLC0415
         from src.mcp.mcp_client import MCPClient  # noqa: PLC0415
@@ -395,13 +363,13 @@ def _init_pipeline_background() -> None:
         _mc = MCPClient()
         _log.info("[PIPELINE] EMAIL + MCP DONE")
 
-        # ── Stage 6: Admin agent ─────────────────────────────────────────────
+        # ── Stage 5: Admin agent ─────────────────────────────────────────────
         _log.info("[PIPELINE] AGENTS INIT START")
         from src.agents.admin_agent import AdminAgent  # noqa: PLC0415
         _ag = AdminAgent(sql_store=_sql)
         _log.info("[PIPELINE] AGENTS DONE")
 
-        # ── Stage 7: Build LangGraph pipeline ────────────────────────────────
+        # ── Stage 6: Build LangGraph pipeline ────────────────────────────────
         _log.info("[PIPELINE] BUILDING GRAPH")
         from src.graph.pipeline import create_pipeline  # noqa: PLC0415
         _built = create_pipeline(
@@ -415,11 +383,13 @@ def _init_pipeline_background() -> None:
         if _built is None:
             raise RuntimeError("create_pipeline() returned None — graph compilation failed")
 
-        # ── Assign globals ONLY after full success ────────────────────────────
+        # ── Mark ready BEFORE touching the vector store ───────────────────────
         _pipeline = _built
         app.state.initialized = True
         app.state.pipeline_error = None
-        _log.info("[PIPELINE] FULLY READY ✓  (PID=%d  TID=%d)", pid, tid)
+        app.state.vector_store = None  # populated by _load_vector_store_background
+        _log.info("[PIPELINE] LIGHTWEIGHT STARTUP COMPLETE ✓  (PID=%d  TID=%d)", pid, tid)
+        _log.info("[PIPELINE] Chat available now (SQL-only mode). Full RAG loading in background...")
 
     except Exception as exc:
         _pipeline_init_error = exc
@@ -436,6 +406,63 @@ def _init_pipeline_background() -> None:
             getattr(app.state, "initialized", False),
             getattr(app.state, "pipeline_error", None),
         )
+
+    # ── Kick off vector store lazy load AFTER signalling ready ────────────
+    # Runs only if pipeline init succeeded.
+    if getattr(app.state, "initialized", False):
+        _trigger_vector_store_load()
+
+
+def _trigger_vector_store_load() -> None:
+    """Start the vector-store background loader if not already running."""
+    global _vs_loading
+    with _vs_load_lock:
+        if _vs_loading or getattr(app.state, "vector_store", None) is not None:
+            return  # already loading or already loaded
+        _vs_loading = True
+        _t = _threading.Thread(
+            target=_load_vector_store_background, daemon=True, name="vs-lazy-load"
+        )
+        _t.start()
+        _log.info("[VECTOR] Lazy loading started (background thread)")
+
+
+def _load_vector_store_background() -> None:
+    """
+    Background daemon thread: load Pinecone/HuggingFace vector store.
+
+    Runs AFTER the pipeline is already marked ready, so it never blocks
+    /api/ready or the chat endpoint.  Once loaded it hot-swaps the retriever
+    inside the live RAGChain via RAGChain.set_vector_store().
+
+    This thread is the ONLY place torch / langchain_huggingface are imported,
+    so there are no import-lock conflicts with the lightweight pipeline thread.
+    """
+    global _vs_loading
+    _log.info("[VECTOR] Lazy loading START (PID=%d  TID=%d)", os.getpid(), _threading.get_ident())
+    try:
+        from src.database.vector_store import VectorStore as _VS  # noqa: PLC0415
+        _log.info("[VECTOR] Importing HuggingFace + Pinecone (may take 30-90s on cold start)...")
+        _vs = _VS()
+        _log.info("[VECTOR] VectorStore initialised — injecting into live RAGChain...")
+
+        # Cache in app.state
+        app.state.vector_store = _vs
+
+        # Hot-swap retriever in the live chatbot's RAGChain
+        from src.graph import nodes as _nodes  # noqa: PLC0415
+        if _nodes._chatbot and hasattr(_nodes._chatbot, "rag_chain"):
+            _nodes._chatbot.rag_chain.set_vector_store(_vs)
+            _nodes._chatbot.vector_store = _vs
+            _log.info("[VECTOR] Loaded successfully ✓ — chatbot upgraded to full RAG mode")
+        else:
+            _log.warning("[VECTOR] Loaded but chatbot not available — VS cached for future use")
+
+    except Exception as exc:
+        _log.error("[VECTOR] Lazy load FAILED: %s", exc)
+        _log.error("[VECTOR] Full traceback:\n%s", _traceback.format_exc())
+    finally:
+        _vs_loading = False
 
 
 def _get_pipeline():
@@ -658,6 +685,12 @@ def debug_state():
         "pipeline_init_error": str(_pipeline_init_error) if _pipeline_init_error else None,
         "app_state_initialized": getattr(app.state, "initialized", False),
         "app_state_pipeline_error": getattr(app.state, "pipeline_error", None),
+        # Vector store lazy-load status
+        "vector_store_loaded": getattr(app.state, "vector_store", None) is not None,
+        "vector_store_loading": _vs_loading,
+        "vs_thread_running": any(
+            t.name == "vs-lazy-load" for t in _threading.enumerate()
+        ),
         "active_sessions": len(_sessions),
     }
 

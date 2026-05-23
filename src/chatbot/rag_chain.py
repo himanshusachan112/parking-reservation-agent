@@ -316,6 +316,28 @@ class RAGChain:
 
         return chain
 
+    def set_vector_store(self, vector_store: "VectorStore") -> None:
+        """
+        Hot-swap the vector store after lazy loading.
+
+        Replaces the empty/null retriever with a real Pinecone retriever and
+        rebuilds self.chain so all future calls use full RAG mode.
+
+        Thread-safe: the assignment ``self.chain = ...`` is atomic under the GIL
+        so the chat thread will see either the old chain or the new one, never
+        a partially-constructed object.
+
+        Args:
+            vector_store: A fully-initialised VectorStore instance.
+        """
+        import logging as _logging
+        _log = _logging.getLogger(__name__)
+
+        self.vector_store = vector_store
+        self.retriever = vector_store.get_retriever(search_kwargs={"k": settings.eval_top_k})
+        self.chain = self._build_chain()  # atomic swap via GIL
+        _log.info("[VECTOR] RAGChain upgraded to full RAG mode ✓")
+
     def ask(self, question: str) -> str:
         """
         Process a user question through the RAG chain.
