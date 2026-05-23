@@ -208,15 +208,13 @@ def _startup_db_check() -> None:
         _log.warning("Could not query production tables: %s", exc)
         _log.info("─" * 48)
 
-    # ── Eagerly initialize the LangGraph pipeline at startup ──
-    # This loads the chatbot (RAG + LLM), email service, MCP client, and admin
-    # agent NOW so that the first user query responds instantly.
-    _log.info("[STARTUP] Pre-loading LangGraph pipeline...")
-    try:
-        _get_pipeline()
-        _log.info("[STARTUP] Pipeline ready — all components loaded")
-    except Exception as _exc:
-        _log.error("[STARTUP] Pipeline pre-load failed (will retry on first request): %s", _exc)
+    # ── Start pipeline initialization in a background thread ──
+    # The server binds to the port first (so Render port-scan succeeds),
+    # then loads the chatbot / RAG / LLM / agents in the background.
+    # _get_pipeline() blocks requests until the thread finishes.
+    _log.info("[STARTUP] Launching background pipeline initialization thread...")
+    _t = _threading.Thread(target=_init_pipeline_background, daemon=True, name="pipeline-init")
+    _t.start()
 
 
 def _auto_seed(_log) -> None:
@@ -280,23 +278,40 @@ def _sync_slot_counters() -> None:
 # Email notification service
 email_service = EmailService()
 
-# Chatbot pipeline (lazy-initialized, per-session)
+# Chatbot pipeline — initialized in a background thread at startup so the
+# server binds to the port immediately (Render port-scan won't time out).
+import threading as _threading
+
 _pipeline = None
+_pipeline_ready = _threading.Event()   # set when pipeline is ready (or failed)
+_pipeline_init_error: Exception | None = None
 _sessions: dict[str, dict] = {}  # session_id -> pipeline_state
 
 
+def _init_pipeline_background() -> None:
+    """Run in a daemon thread: build the pipeline and signal readiness."""
+    global _pipeline, _pipeline_init_error
+    try:
+        _log.info("[PIPELINE] Background init started (chatbot + RAG + LLM + agents)...")
+        from src.graph.pipeline import create_pipeline
+        _pipeline = create_pipeline(sql_store=sql_store, email_service=email_service)
+        _log.info("[PIPELINE] All components loaded — ready to serve requests")
+    except Exception as exc:
+        _pipeline_init_error = exc
+        _log.error("[PIPELINE] Background init failed: %s", exc, exc_info=True)
+    finally:
+        _pipeline_ready.set()  # always unblock waiting requests
+
+
 def _get_pipeline():
-    """Return the shared LangGraph pipeline, initializing it if needed."""
-    global _pipeline
+    """Return the shared LangGraph pipeline, waiting for background init if needed."""
+    if not _pipeline_ready.is_set():
+        _log.info("[PIPELINE] Waiting for background initialization (max 120s)...")
+        _pipeline_ready.wait(timeout=120)
+    if _pipeline_init_error:
+        raise HTTPException(status_code=500, detail=f"Pipeline init failed: {_pipeline_init_error}")
     if _pipeline is None:
-        _log.info("[PIPELINE] Initializing LangGraph pipeline...")
-        try:
-            from src.graph.pipeline import create_pipeline
-            _pipeline = create_pipeline(sql_store=sql_store, email_service=email_service)
-            _log.info("[PIPELINE] Pipeline initialized successfully")
-        except Exception as exc:
-            _log.error("[PIPELINE] Failed to initialize: %s", exc, exc_info=True)
-            raise HTTPException(status_code=500, detail=f"Pipeline init failed: {str(exc)}")
+        raise HTTPException(status_code=503, detail="Pipeline not ready yet, please retry")
     return _pipeline
 
 
