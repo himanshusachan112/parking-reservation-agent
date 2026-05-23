@@ -454,6 +454,21 @@ def health_check():
     return {"status": "healthy", "service": "ParkSmart Reservation API"}
 
 
+@app.get("/api/ready")
+def ready_check():
+    """
+    Readiness endpoint — tells the frontend whether the AI pipeline is loaded.
+    The pipeline is initialized in a background thread at startup; this endpoint
+    lets the frontend show a 'warming up' state until all components are ready.
+    """
+    ready = _pipeline_ready.is_set() and _pipeline is not None
+    return {
+        "ready": ready,
+        "status": "ready" if ready else "initializing",
+        "message": "All systems operational" if ready else "AI pipeline is loading, please wait...",
+    }
+
+
 @app.get("/api/health/detailed")
 def health_check_detailed():
     """

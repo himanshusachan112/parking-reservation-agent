@@ -1,6 +1,6 @@
 "use client";
 
-import { PanelLeftOpen, CalendarPlus, Sparkles } from "lucide-react";
+import { PanelLeftOpen, CalendarPlus, Sparkles, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
@@ -10,6 +10,7 @@ import { ReservationModal } from "@/components/chat/ReservationModal";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { useChatStore } from "@/store/chatStore";
 import { useUIStore } from "@/store/uiStore";
+import { useBackendReady } from "@/hooks/useBackendReady";
 import { toast } from "sonner";
 import { useEffect } from "react";
 
@@ -23,6 +24,8 @@ export default function ChatPage() {
   const setReservationModalOpen = useUIStore(
     (s) => s.setReservationModalOpen
   );
+
+  const { ready: backendReady, message: backendMessage } = useBackendReady();
 
   // Show error toasts
   useEffect(() => {
@@ -68,6 +71,19 @@ export default function ChatPage() {
                 <p className="text-[10px] text-muted-foreground leading-none mt-0.5">Parking Assistant</p>
               </div>
             </div>
+            {/* Backend readiness indicator */}
+            {!backendReady && (
+              <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg px-2.5 py-1">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                <span className="hidden sm:inline">Warming up…</span>
+              </div>
+            )}
+            {backendReady && (
+              <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="hidden sm:inline">Ready</span>
+              </div>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -79,11 +95,26 @@ export default function ChatPage() {
             </Button>
           </div>
 
+          {/* Warming-up banner — shown while pipeline is loading */}
+          {!backendReady && (
+            <div className="shrink-0 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800 px-4 py-2.5 flex items-center gap-2.5">
+              <Loader2 className="h-4 w-4 text-amber-600 dark:text-amber-400 animate-spin shrink-0" />
+              <div>
+                <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                  AI is warming up
+                </p>
+                <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                  {backendMessage} — your first message will be answered once ready.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Messages — scrollable */}
           <ChatWindow />
 
           {/* Input — sticky bottom */}
-          <ChatInput onSend={sendMessage} disabled={isLoading} />
+          <ChatInput onSend={sendMessage} disabled={isLoading || !backendReady} />
         </div>
       </div>
 
