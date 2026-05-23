@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: parking-chatbot
+    env: python
+    # Installs all Python packages and downloads the spacy model at build time.
+    # spacy model is cached in the build layer so it is NOT downloaded on every cold start.
+    buildCommand: pip install -r requirements.txt && python -m spacy download en_core_web_lg
+    # IMPORTANT: no --reload flag here — --reload spawns a file-watcher child process
+    # which doubles memory usage and causes unexpected restarts on Render.
+    startCommand: uvicorn src.api.server:app --host 0.0.0.0 --port $PORT --workers 1
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.0"
+      # Set remaining secrets in the Render dashboard (never commit them here):
+      #   GOOGLE_API_KEY, PINECONE_API_KEY, DATABASE_URL,
+      #   SMTP_USERNAME, SMTP_PASSWORD, SMTP_SERVER, SMTP_PORT,
+      #   ADMIN_EMAIL, APP_BASE_URL (= https://parking-chatbot-ten.vercel.app),
+      #   CORS_ORIGINS (= http://localhost:3000,https://parking-chatbot-ten.vercel.app)

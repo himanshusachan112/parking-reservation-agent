@@ -29,10 +29,11 @@ import uuid
 from typing import List, Optional, Tuple
 
 from langchain_core.documents import Document
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_pinecone import PineconeVectorStore
-from pinecone import Pinecone, ServerlessSpec
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+
+# Heavy imports (torch / sentence-transformers / pinecone) are deferred to
+# VectorStore.__init__ so that merely importing this module does NOT trigger
+# a 30-60 second torch startup on the first import.
 
 from config.settings import settings
 
@@ -72,6 +73,15 @@ class VectorStore:
         3. Create the index if it does not exist (cosine similarity)
         4. Wrap with LangChain PineconeVectorStore for chain compatibility
         """
+        # Lazy-import heavy dependencies so that importing this module doesn't
+        # load torch/sentence-transformers/pinecone during server startup.
+        from langchain_huggingface import HuggingFaceEmbeddings  # noqa: PLC0415
+        from langchain_pinecone import PineconeVectorStore as _PVC  # noqa: PLC0415
+        from pinecone import Pinecone, ServerlessSpec  # noqa: PLC0415
+
+        self._PineconeVectorStore = _PVC
+        self._ServerlessSpec = ServerlessSpec
+
         # --- Embedding model (runs locally, no API key needed) ---
         self.embeddings = HuggingFaceEmbeddings(
             model_name=settings.embedding_model,
@@ -90,7 +100,7 @@ class VectorStore:
         self._ensure_index()
 
         # --- LangChain wrapper ---
-        self.vectorstore = PineconeVectorStore(
+        self.vectorstore = self._PineconeVectorStore(
             index=self._pc.Index(self._index_name),
             embedding=self.embeddings,
             text_key="text",
@@ -124,7 +134,7 @@ class VectorStore:
                 name=self._index_name,
                 dimension=self.EMBEDDING_DIMENSION,
                 metric="cosine",
-                spec=ServerlessSpec(
+                spec=self._ServerlessSpec(
                     cloud=settings.pinecone_cloud,
                     region=settings.pinecone_environment,
                 ),

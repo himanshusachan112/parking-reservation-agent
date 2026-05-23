@@ -472,6 +472,15 @@ def health_check():
     return {"status": "healthy", "service": "ParkSmart Reservation API"}
 
 
+@app.get("/")
+def root():
+    """
+    Root endpoint — returns 200 so Render's default healthcheck succeeds.
+    Use /api/ready for AI pipeline readiness; use /api/health for liveness.
+    """
+    return {"service": "ParkSmart API", "status": "running"}
+
+
 @app.get("/api/ready")
 def ready_check():
     """
