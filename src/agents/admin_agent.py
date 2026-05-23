@@ -35,7 +35,6 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableLambda
 from langchain_core.tools import tool
-from langchain_openai import AzureChatOpenAI
 
 from config.settings import settings
 from src.database.sql_store import SQLStore
@@ -145,15 +144,34 @@ class AdminAgent:
         self.email_service = EmailService()
         self.mcp_client = MCPClient()
 
-        # Initialize the LLM (same EPAM DIAL as user chatbot)
-        self.llm = AzureChatOpenAI(
-            azure_deployment=settings.llm_model,
-            azure_endpoint=settings.azure_endpoint,
-            api_key=settings.dial_api_key,
-            api_version=settings.api_version,
-            temperature=0.2,  # Lower temp for admin decisions
-            max_tokens=1024,
-        )
+        # Choose LLM provider (priority: Gemini → Groq → EPAM DIAL)
+        # Same logic as RAGChain to ensure consistent LLM access
+        if settings.google_api_key:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            self.llm = ChatGoogleGenerativeAI(
+                model=settings.gemini_model,
+                google_api_key=settings.google_api_key,
+                temperature=0.2,  # Lower temp for admin decisions
+                max_output_tokens=1024,
+            )
+        elif settings.groq_api_key:
+            from langchain_groq import ChatGroq
+            self.llm = ChatGroq(
+                api_key=settings.groq_api_key,
+                model=settings.groq_model,
+                temperature=0.2,  # Lower temp for admin decisions
+                max_tokens=1024,
+            )
+        else:
+            from langchain_openai import AzureChatOpenAI
+            self.llm = AzureChatOpenAI(
+                azure_deployment=settings.llm_model,
+                azure_endpoint=settings.azure_endpoint,
+                api_key=settings.dial_api_key,
+                api_version=settings.api_version,
+                temperature=0.2,  # Lower temp for admin decisions
+                max_tokens=1024,
+            )
 
         # Create LangChain tools
         self.tools = [
