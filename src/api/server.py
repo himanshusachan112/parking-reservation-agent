@@ -279,9 +279,14 @@ def _get_pipeline():
     """Lazy-init the shared LangGraph pipeline."""
     global _pipeline
     if _pipeline is None:
-        from src.graph.pipeline import create_pipeline
-
-        _pipeline = create_pipeline(sql_store=sql_store, email_service=email_service)
+        _log.info("[PIPELINE] Initializing LangGraph pipeline (first request)...")
+        try:
+            from src.graph.pipeline import create_pipeline
+            _pipeline = create_pipeline(sql_store=sql_store, email_service=email_service)
+            _log.info("[PIPELINE] Pipeline initialized successfully")
+        except Exception as exc:
+            _log.error("[PIPELINE] Failed to initialize: %s", exc, exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Pipeline init failed: {str(exc)}")
     return _pipeline
 
 
@@ -325,6 +330,7 @@ def chat(request: ChatRequest):
     Supports general Q&A and the full reservation booking flow.
     Each session_id gets its own isolated conversation state.
     """
+    _log.info("[CHAT] Received message from session %s: %s", session_id[:8], request.message[:50])
     import uuid
 
     from src.graph.pipeline import run_user_message
