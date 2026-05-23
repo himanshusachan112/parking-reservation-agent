@@ -170,9 +170,35 @@ class RAGChain:
             vector_store: Pre-initialized VectorStore (or creates new one)
             sql_store: Pre-initialized SQLStore (or creates new one)
         """
-        # Initialize components
-        self.vector_store = vector_store or VectorStore()
+        import concurrent.futures
+        import logging as _logging
+        _log = _logging.getLogger(__name__)
+
+        # Initialize SQL store
         self.sql_store = sql_store or SQLStore()
+
+        # Try to initialize Pinecone VectorStore with a 25s timeout.
+        # If it hangs or fails (e.g. on Render cold-start), fall back to
+        # SQL-only mode so the chatbot still works for pricing/availability.
+        self.vector_store = None
+        if vector_store:
+            self.vector_store = vector_store
+        else:
+            try:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _pool:
+                    _future = _pool.submit(VectorStore)
+                    self.vector_store = _future.result(timeout=25)
+                _log.info("VectorStore connected successfully")
+            except concurrent.futures.TimeoutError:
+                _log.warning(
+                    "Pinecone connection timed out after 25s — running in SQL-only mode. "
+                    "Static knowledge (FAQs, policies) will be skipped; "
+                    "live pricing/availability still works."
+                )
+            except Exception as _exc:
+                _log.warning(
+                    "Pinecone unavailable (%s) — running in SQL-only mode.", _exc
+                )
 
         # Choose LLM provider (priority: Gemini → Groq → EPAM DIAL)
         if settings.google_api_key:
@@ -201,8 +227,12 @@ class RAGChain:
                 max_tokens=settings.llm_max_tokens,
             )
 
-        # Get the retriever from vector store
-        self.retriever = self.vector_store.get_retriever(search_kwargs={"k": settings.eval_top_k})
+        # Build retriever — null (empty) retriever if Pinecone not available
+        if self.vector_store:
+            self.retriever = self.vector_store.get_retriever(search_kwargs={"k": settings.eval_top_k})
+        else:
+            from langchain_core.runnables import RunnableLambda
+            self.retriever = RunnableLambda(lambda _: [])
 
         # Build the chain
         self.chain = self._build_chain()

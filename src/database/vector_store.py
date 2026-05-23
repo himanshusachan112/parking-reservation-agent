@@ -104,7 +104,20 @@ class VectorStore:
 
     def _ensure_index(self) -> None:
         """Create the Pinecone index if it does not already exist."""
-        existing = [idx.name for idx in self._pc.list_indexes()]
+        import concurrent.futures
+        def _list():
+            return [idx.name for idx in self._pc.list_indexes()]
+
+        # Give Pinecone at most 20 seconds to respond before giving up
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(_list)
+            try:
+                existing = future.result(timeout=20)
+            except concurrent.futures.TimeoutError:
+                raise VectorStoreConnectionError(
+                    "Pinecone list_indexes() timed out after 20s — check network / API key"
+                )
+
         if self._index_name not in existing:
             logger.info("Creating Pinecone index '%s' ...", self._index_name)
             self._pc.create_index(
