@@ -32,6 +32,7 @@ HOW TO RUN:
 
 import os
 import sys
+import traceback as _traceback
 
 # Ensure project root is in path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -155,11 +156,31 @@ _payment_svc = PaymentService()
 
 @app.on_event("startup")
 def _startup_db_check() -> None:
-    """Log active DB config, row counts, and warn when tables are empty."""
+    """Kick off background pipeline init, then run DB health/seed checks."""
     import logging
 
     _log = logging.getLogger(__name__)
 
+    # ── CRITICAL: Start the AI pipeline thread FIRST ──────────────────────
+    # Must happen before any DB checks that may fail or return early.
+    # Previously the thread start was at the END of this function, so if
+    # validate_connection() failed (e.g. cold PostgreSQL on Render) the
+    # thread was never started and /api/ready returned 503 forever.
+    app.state.initialized = False
+    app.state.pipeline_error = None
+    _log.info("[STARTUP] ── Server startup (PID=%d) ──", os.getpid())
+    _log.info("[STARTUP] Launching background pipeline init thread...")
+    _init_thread = _threading.Thread(
+        target=_init_pipeline_background, daemon=True, name="pipeline-init"
+    )
+    _init_thread.start()
+    _log.info(
+        "[STARTUP] Thread launched — name=%s  alive=%s",
+        _init_thread.name,
+        _init_thread.is_alive(),
+    )
+
+    # ── DB health / seed checks (informational — never block pipeline) ────
     # Ensure payment table exists (idempotent — safe to run every startup)
     try:
         from src.database.base import Base
@@ -208,13 +229,8 @@ def _startup_db_check() -> None:
         _log.warning("Could not query production tables: %s", exc)
         _log.info("─" * 48)
 
-    # ── Start pipeline initialization in a background thread ──
-    # The server binds to the port first (so Render port-scan succeeds),
-    # then loads the chatbot / RAG / LLM / agents in the background.
-    # _get_pipeline() blocks requests until the thread finishes.
-    _log.info("[STARTUP] Launching background pipeline initialization thread...")
-    _t = _threading.Thread(target=_init_pipeline_background, daemon=True, name="pipeline-init")
-    _t.start()
+    # NOTE: thread is started at the TOP of this function (above DB checks)
+    # so it is already running by this point.
 
 
 def _auto_seed(_log) -> None:
@@ -278,29 +294,62 @@ def _sync_slot_counters() -> None:
 # Email notification service
 email_service = EmailService()
 
-# Chatbot pipeline — initialized in a background thread at startup so the
-# server binds to the port immediately (Render port-scan won't time out).
+# ---------------------------------------------------------------------------
+# Pipeline state — managed by background init thread
+# ---------------------------------------------------------------------------
 import threading as _threading
 
 _pipeline = None
-_pipeline_ready = _threading.Event()   # set when pipeline is ready (or failed)
+_pipeline_ready = _threading.Event()   # set when pipeline finishes (success OR failure)
 _pipeline_init_error: Exception | None = None
 _sessions: dict[str, dict] = {}  # session_id -> pipeline_state
 
+# app.state.initialized / app.state.pipeline_error are set inside the thread
+# so that /api/ready and /debug/state can report accurate status.
+
 
 def _init_pipeline_background() -> None:
-    """Run in a daemon thread: build the pipeline and signal readiness."""
+    """
+    Daemon thread: fully initialise the AI pipeline then signal readiness.
+
+    Logs every stage with [PIPELINE] prefix so Render log-tail shows progress.
+    Logs PID + TID so we can confirm the thread actually executed.
+    """
     global _pipeline, _pipeline_init_error
+    pid = os.getpid()
+    tid = _threading.get_ident()
+    _log.info("[PIPELINE] START  (PID=%d  TID=%d)", pid, tid)
     try:
-        _log.info("[INIT] ── Background pipeline initialization started ──")
-        from src.graph.pipeline import create_pipeline
+        # ── Stage 1: import pipeline modules ────────────────────────────────
+        # torch / transformers are lazy-imported inside VectorStore.__init__
+        # so this import itself should now complete in a few seconds.
+        _log.info("[PIPELINE] Importing pipeline modules...")
+        from src.graph.pipeline import create_pipeline  # noqa: PLC0415
+        _log.info("[PIPELINE] Modules imported OK")
+
+        # ── Stage 2-6: component init (SQL, embeddings, RAG, agents) ────────
+        # Individual stage logs are emitted by nodes.initialize_components()
         _pipeline = create_pipeline(sql_store=sql_store, email_service=email_service)
-        _log.info("[INIT] ── All components ready — system fully initialized ──")
+
+        # ── Done ─────────────────────────────────────────────────────────────
+        app.state.initialized = True
+        app.state.pipeline_error = None
+        _log.info("[PIPELINE] FULLY READY ✓  (PID=%d  TID=%d)", pid, tid)
+
     except Exception as exc:
         _pipeline_init_error = exc
-        _log.error("[INIT] Background initialization FAILED: %s", exc, exc_info=True)
+        app.state.initialized = False
+        app.state.pipeline_error = str(exc)
+        _log.error("[PIPELINE] FAILED: %s", exc)
+        _log.error("[PIPELINE] Full traceback:\n%s", _traceback.format_exc())
+
     finally:
-        _pipeline_ready.set()  # always unblock — even on failure
+        _pipeline_ready.set()  # always unblock waiters — even on failure
+        _log.info(
+            "[PIPELINE] Ready-event set  initialized=%s  error=%s",
+            getattr(app.state, "initialized", False),
+            getattr(app.state, "pipeline_error", None),
+        )
 
 
 def _get_pipeline():
@@ -490,21 +539,41 @@ def ready_check():
     """
     from fastapi.responses import JSONResponse
 
-    initialized = _pipeline_ready.is_set()
+    initialized = getattr(app.state, "initialized", False)
+    error = getattr(app.state, "pipeline_error", None)
     healthy = initialized and _pipeline is not None and _pipeline_init_error is None
 
     if not healthy:
-        msg = (
-            f"Initialization failed: {_pipeline_init_error}"
-            if (_pipeline_init_error and initialized)
-            else "AI pipeline is loading, please wait..."
-        )
+        if error or _pipeline_init_error:
+            msg = f"Initialization failed: {error or _pipeline_init_error}"
+        else:
+            msg = "AI pipeline is loading, please wait..."
         return JSONResponse(
             status_code=503,
             content={"ready": False, "status": "initializing", "message": msg},
         )
 
     return {"ready": True, "status": "ready", "message": "All systems operational"}
+
+
+@app.get("/debug/state")
+def debug_state():
+    """
+    Diagnostic endpoint — exposes internal initialization state.
+    Useful for confirming the background thread ran and what stage it reached.
+    """
+    return {
+        "pid": os.getpid(),
+        "pipeline_thread_running": any(
+            t.name == "pipeline-init" for t in _threading.enumerate()
+        ),
+        "pipeline_ready_event": _pipeline_ready.is_set(),
+        "pipeline_is_none": _pipeline is None,
+        "pipeline_init_error": str(_pipeline_init_error) if _pipeline_init_error else None,
+        "app_state_initialized": getattr(app.state, "initialized", False),
+        "app_state_pipeline_error": getattr(app.state, "pipeline_error", None),
+        "active_sessions": len(_sessions),
+    }
 
 
 @app.get("/api/health/detailed")

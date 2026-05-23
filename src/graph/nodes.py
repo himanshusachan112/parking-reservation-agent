@@ -86,26 +86,35 @@ def initialize_components(
     _log = logging.getLogger(__name__)
     global _chatbot, _sql_store, _email_service, _mcp_client, _admin_agent
 
-    _log.info("[INIT] Initializing SQL store...")
+    # ── Stage: SQL store ────────────────────────────────────────────────────
+    _log.info("[PIPELINE] SQL INIT START")
     _sql_store = sql_store or SQLStore()
     _sql_store.initialize_default_data()
-    _log.info("[INIT] SQL store ready")
+    _log.info("[PIPELINE] SQL INIT DONE")
 
-    _log.info("[INIT] Initializing chatbot (RAG chain)...")
+    # ── Stage: Chatbot (HuggingFace embeddings + Pinecone + RAG chain) ─────
+    # HuggingFace model is loaded lazily inside VectorStore.__init__ so the
+    # first instantiation here triggers the torch / sentence-transformers load.
+    # On a cold Render instance this can take 30-90 s; that is expected.
+    _log.info("[PIPELINE] VECTOR STORE + RAG INIT START  (HuggingFace + Pinecone + LLM — may take 30-90s on cold start)")
     _chatbot = chatbot or ParkingChatbot()
-    _log.info("[INIT] Chatbot ready")
-    
-    _log.info("[INIT] Initializing email service...")
+    _log.info("[PIPELINE] VECTOR STORE DONE")
+    _log.info("[PIPELINE] RAG DONE")
+
+    # ── Stage: Email service ────────────────────────────────────────────────
+    _log.info("[PIPELINE] EMAIL SERVICE INIT START")
     _email_service = email_service or EmailService()
-    _log.info("[INIT] Email service ready")
-    
-    _log.info("[INIT] Initializing MCP client...")
+    _log.info("[PIPELINE] EMAIL SERVICE INIT DONE")
+
+    # ── Stage: MCP client ───────────────────────────────────────────────────
+    _log.info("[PIPELINE] MCP CLIENT INIT START")
     _mcp_client = mcp_client or MCPClient()
-    _log.info("[INIT] MCP client ready")
-    
-    _log.info("[INIT] Initializing admin agent...")
+    _log.info("[PIPELINE] MCP CLIENT INIT DONE")
+
+    # ── Stage: Admin agent (LLM + tools) ────────────────────────────────────
+    _log.info("[PIPELINE] AGENTS INIT START")
     _admin_agent = admin_agent or AdminAgent(sql_store=_sql_store)
-    _log.info("[INIT] Admin agent ready")
+    _log.info("[PIPELINE] AGENTS DONE")
 
 
 # ════════════════════════════════════════════════════
