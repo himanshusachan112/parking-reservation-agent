@@ -330,12 +330,12 @@ def chat(request: ChatRequest):
     Supports general Q&A and the full reservation booking flow.
     Each session_id gets its own isolated conversation state.
     """
-    _log.info("[CHAT] Received message from session %s: %s", session_id[:8], request.message[:50])
     import uuid
 
     from src.graph.pipeline import run_user_message
 
     session_id = request.session_id or str(uuid.uuid4())
+    _log.info("[CHAT] Received message from session %s: %s", session_id[:8], request.message[:50])
     pipeline = _get_pipeline()
     state = _get_session_state(session_id)
 
