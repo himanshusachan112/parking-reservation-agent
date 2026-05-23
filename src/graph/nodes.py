@@ -82,15 +82,30 @@ def initialize_components(
         mcp_client: MCPClient instance (creates new if None)
         admin_agent: AdminAgent instance (creates new if None)
     """
+    import logging
+    _log = logging.getLogger(__name__)
     global _chatbot, _sql_store, _email_service, _mcp_client, _admin_agent
 
+    _log.info("[INIT] Initializing SQL store...")
     _sql_store = sql_store or SQLStore()
     _sql_store.initialize_default_data()
+    _log.info("[INIT] SQL store ready")
 
+    _log.info("[INIT] Initializing chatbot (RAG chain)...")
     _chatbot = chatbot or ParkingChatbot()
+    _log.info("[INIT] Chatbot ready")
+    
+    _log.info("[INIT] Initializing email service...")
     _email_service = email_service or EmailService()
+    _log.info("[INIT] Email service ready")
+    
+    _log.info("[INIT] Initializing MCP client...")
     _mcp_client = mcp_client or MCPClient()
+    _log.info("[INIT] MCP client ready")
+    
+    _log.info("[INIT] Initializing admin agent...")
     _admin_agent = admin_agent or AdminAgent(sql_store=_sql_store)
+    _log.info("[INIT] Admin agent ready")
 
 
 # ════════════════════════════════════════════════════
