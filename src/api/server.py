@@ -292,26 +292,29 @@ def _init_pipeline_background() -> None:
     """Run in a daemon thread: build the pipeline and signal readiness."""
     global _pipeline, _pipeline_init_error
     try:
-        _log.info("[PIPELINE] Background init started (chatbot + RAG + LLM + agents)...")
+        _log.info("[INIT] ── Background pipeline initialization started ──")
         from src.graph.pipeline import create_pipeline
         _pipeline = create_pipeline(sql_store=sql_store, email_service=email_service)
-        _log.info("[PIPELINE] All components loaded — ready to serve requests")
+        _log.info("[INIT] ── All components ready — system fully initialized ──")
     except Exception as exc:
         _pipeline_init_error = exc
-        _log.error("[PIPELINE] Background init failed: %s", exc, exc_info=True)
+        _log.error("[INIT] Background initialization FAILED: %s", exc, exc_info=True)
     finally:
-        _pipeline_ready.set()  # always unblock waiting requests
+        _pipeline_ready.set()  # always unblock — even on failure
 
 
 def _get_pipeline():
-    """Return the shared LangGraph pipeline, waiting for background init if needed."""
+    """
+    Return the shared pipeline if ready, or None if still initializing.
+    Never blocks — callers must handle the None case gracefully.
+    """
     if not _pipeline_ready.is_set():
-        _log.info("[PIPELINE] Waiting for background initialization (max 120s)...")
-        _pipeline_ready.wait(timeout=120)
+        return None  # still loading
     if _pipeline_init_error:
-        raise HTTPException(status_code=500, detail=f"Pipeline init failed: {_pipeline_init_error}")
-    if _pipeline is None:
-        raise HTTPException(status_code=503, detail="Pipeline not ready yet, please retry")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Pipeline initialization failed: {_pipeline_init_error}"
+        )
     return _pipeline
 
 
@@ -361,7 +364,22 @@ def chat(request: ChatRequest):
 
     session_id = request.session_id or str(uuid.uuid4())
     _log.info("[CHAT] Received message from session %s: %s", session_id[:8], request.message[:50])
+
     pipeline = _get_pipeline()
+
+    # If pipeline is still warming up, return immediately with a friendly message.
+    # The frontend will show this and the user can retry in a few seconds.
+    if pipeline is None:
+        _log.info("[CHAT] Pipeline not ready yet — returning warm-up response")
+        return ChatResponse(
+            response=(
+                "⏳ I'm still loading my AI components (this takes ~30 seconds on first start). "
+                "Please try again in a moment!"
+            ),
+            is_booking_flow=False,
+            session_id=session_id,
+        )
+
     state = _get_session_state(session_id)
 
     try:
@@ -458,15 +476,26 @@ def health_check():
 def ready_check():
     """
     Readiness endpoint — tells the frontend whether the AI pipeline is loaded.
-    The pipeline is initialized in a background thread at startup; this endpoint
-    lets the frontend show a 'warming up' state until all components are ready.
+    Returns HTTP 200 + {ready: true}  when fully initialized.
+    Returns HTTP 503 + {ready: false} while still loading (frontend polls this).
     """
-    ready = _pipeline_ready.is_set() and _pipeline is not None
-    return {
-        "ready": ready,
-        "status": "ready" if ready else "initializing",
-        "message": "All systems operational" if ready else "AI pipeline is loading, please wait...",
-    }
+    from fastapi.responses import JSONResponse
+
+    initialized = _pipeline_ready.is_set()
+    healthy = initialized and _pipeline is not None and _pipeline_init_error is None
+
+    if not healthy:
+        msg = (
+            f"Initialization failed: {_pipeline_init_error}"
+            if (_pipeline_init_error and initialized)
+            else "AI pipeline is loading, please wait..."
+        )
+        return JSONResponse(
+            status_code=503,
+            content={"ready": False, "status": "initializing", "message": msg},
+        )
+
+    return {"ready": True, "status": "ready", "message": "All systems operational"}
 
 
 @app.get("/api/health/detailed")

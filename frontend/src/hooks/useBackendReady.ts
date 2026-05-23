@@ -26,9 +26,17 @@ export function useBackendReady() {
         } else {
           setMessage(result.message || "AI pipeline is loading…");
         }
-      } catch {
-        // Backend might not be reachable yet — keep polling
-        if (!cancelled) setMessage("Connecting to backend…");
+      } catch (err: unknown) {
+        if (cancelled) return;
+        // 503 = explicitly "not ready yet" — extract message from response body
+        const status = (err as { status?: number })?.status;
+        const detail = (err as { detail?: { message?: string } })?.detail;
+        if (status === 503) {
+          setMessage(detail?.message || "AI pipeline is loading…");
+        } else {
+          // Network error or backend down — keep polling
+          setMessage("Connecting to backend…");
+        }
       }
     };
 
