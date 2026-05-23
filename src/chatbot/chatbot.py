@@ -121,10 +121,30 @@ class ParkingChatbot:
         reservation_data: "ReservationData" = field(default_factory=lambda: ReservationData())
         chat_history: list = field(default_factory=list)
 
-    def __init__(self):
+    def __init__(self, vector_store: "VectorStore | None" = None):
         """Initialize all components of the chatbot."""
+        import logging as _lg
+        _log = _lg.getLogger(__name__)
+
+        # If a pre-built VectorStore is provided (from the pipeline init thread),
+        # use it directly. Otherwise attempt to build one, falling back to None
+        # (SQL-only mode) on any failure so the chatbot still starts.
+        if vector_store is not None:
+            self.vector_store = vector_store
+        else:
+            import concurrent.futures as _cf
+            try:
+                with _cf.ThreadPoolExecutor(max_workers=1) as _pool:
+                    _future = _pool.submit(VectorStore)
+                    self.vector_store = _future.result(timeout=30)
+            except Exception as _vs_err:
+                _log.warning(
+                    "[PIPELINE] ParkingChatbot: VectorStore unavailable (%s) — SQL-only mode",
+                    _vs_err,
+                )
+                self.vector_store = None
+
         # Initialize database components
-        self.vector_store = VectorStore()
         self.sql_store = SQLStore()
 
         # Initialize the SQL database with default data
