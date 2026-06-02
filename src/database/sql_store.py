@@ -185,24 +185,20 @@ class SQLStore:
         self._migrate_schema()
 
     def _migrate_schema(self):
-        """Add missing columns to existing SQLite tables (lightweight migration).
+        """Add missing columns to existing tables (lightweight migration).
 
-        For PostgreSQL, Alembic handles all schema changes – this method is
-        a no-op when running against PostgreSQL to avoid conflicts.
+        For PostgreSQL, Alembic handles schema evolution for new installs.
+        However, older databases may still require runtime column additions
+        when a table was created before a schema upgrade.
         """
         from sqlalchemy import inspect, text
-
-        # Skip manual migration for PostgreSQL; Alembic manages it
-        url = str(self.engine.url)
-        if url.startswith("postgresql") or url.startswith("postgres"):
-            return
 
         inspector = inspect(self.engine)
         if "reservations" in inspector.get_table_names():
             columns = [col["name"] for col in inspector.get_columns("reservations")]
             with self.engine.begin() as conn:
                 if "updated_at" not in columns:
-                    conn.execute(text("ALTER TABLE reservations ADD COLUMN updated_at DATETIME"))
+                    conn.execute(text("ALTER TABLE reservations ADD COLUMN updated_at TIMESTAMP"))
                 if "email" not in columns:
                     conn.execute(text("ALTER TABLE reservations ADD COLUMN email VARCHAR"))
 
