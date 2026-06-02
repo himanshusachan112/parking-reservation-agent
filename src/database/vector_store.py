@@ -48,6 +48,52 @@ class VectorStoreConnectionError(VectorStoreError):
     """Raised when connection to Pinecone fails."""
 
 
+class HuggingFaceHubInferenceEmbeddings:
+    """Adapter for Hugging Face Hub remote embeddings via InferenceClient."""
+
+    def __init__(self, repo_id: str, token: str):
+        from huggingface_hub import InferenceClient  # noqa: PLC0415
+
+        self._client = InferenceClient(token=token)
+        self._repo_id = repo_id
+
+    def _extract(self, texts):
+        result = self._client.feature_extraction(texts, model=self._repo_id)
+        # Convert numpy arrays to pure Python lists (including nested float32 → float)
+        import numpy as np
+        
+        def to_python_list(arr):
+            """Recursively convert numpy types to Python native types."""
+            if isinstance(arr, np.ndarray):
+                return [to_python_list(x) for x in arr]
+            elif isinstance(arr, (np.floating, np.integer)):
+                return float(arr)
+            elif isinstance(arr, (list, tuple)):
+                return [to_python_list(x) for x in arr]
+            else:
+                return arr
+        
+        return to_python_list(result)
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        result = self._extract(texts)
+        # Ensure result is a list of lists even if _extract returns a single array
+        if isinstance(result, list) and len(result) > 0 and isinstance(result[0], (int, float)):
+            return [result]
+        return result
+
+    def embed_query(self, text: str) -> List[float]:
+        result = self._extract([text])
+        # Extract the first embedding from the list
+        if isinstance(result, list) and len(result) > 0:
+            first = result[0]
+            if isinstance(first, list):
+                return first
+            else:
+                return result
+        return result
+
+
 class VectorStore:
     """
     Wrapper around Pinecone for storing and retrieving parking information.
@@ -82,12 +128,53 @@ class VectorStore:
         self._PineconeVectorStore = _PVC
         self._ServerlessSpec = ServerlessSpec
 
-        # --- Embedding model (runs locally, no API key needed) ---
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name=settings.embedding_model,
-            model_kwargs={"device": "cpu"},
-            encode_kwargs={"normalize_embeddings": True},
-        )
+        # --- Embedding provider: remote HF Hub ONLY (no local fallback) ---
+        provider = getattr(settings, "embedding_provider", "local")
+        if provider == "hf_hub":
+            token = settings.huggingfacehub_api_token or None
+            tried = False
+
+            # First try the LangChain wrapper if installed.
+            try:
+                from langchain_huggingface_hub import HuggingFaceHubEmbeddings  # type: ignore
+
+                self.embeddings = (
+                    HuggingFaceHubEmbeddings(
+                        repo_id=settings.embedding_model,
+                        huggingfacehub_api_token=token,
+                    )
+                    if token
+                    else HuggingFaceHubEmbeddings(repo_id=settings.embedding_model)
+                )
+                logger.info("Using remote HuggingFaceHub embeddings (repo=%s)", settings.embedding_model)
+                tried = True
+            except Exception as exc:
+                logger.warning(
+                    "langchain_huggingface_hub unavailable or failed; falling back to direct huggingface-hub InferenceClient. (%s)",
+                    exc,
+                )
+
+            if not tried:
+                try:
+                    self.embeddings = HuggingFaceHubInferenceEmbeddings(
+                        repo_id=settings.embedding_model,
+                        token=settings.huggingfacehub_api_token,
+                    )
+                    logger.info("Using direct Hugging Face Hub Inference embeddings (repo=%s)", settings.embedding_model)
+                    tried = True
+                except Exception as exc:
+                    raise VectorStoreConnectionError(
+                        f"Failed to initialize remote Hugging Face Hub embeddings: {exc}"
+                    ) from exc
+
+            if not tried:
+                raise VectorStoreConnectionError(
+                    "Failed to initialize any remote Hugging Face Hub embedding provider."
+                )
+        else:
+            raise VectorStoreConnectionError(
+                f"Unsupported embedding provider '{provider}'. To use remote embeddings set EMBEDDING_PROVIDER=hf_hub and provide HUGGINGFACEHUB_API_TOKEN if required."
+            )
 
         # --- Pinecone client ---
         if not settings.pinecone_api_key:

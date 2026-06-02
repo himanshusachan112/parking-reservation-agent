@@ -49,8 +49,17 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4o"
 
     # Which embedding model to use for vectorizing text
-    # all-MiniLM-L6-v2: free local model, no API needed, 384-dim vectors
+    # Local example: all-MiniLM-L6-v2
+    # Remote HF Hub example: sentence-transformers/all-MiniLM-L6-v2
     embedding_model: str = "all-MiniLM-L6-v2"
+
+    # Use remote embedding provider if set (options: "hf_hub", "openai", "local")
+    # Set EMBEDDING_PROVIDER in .env to choose. Default = local
+    embedding_provider: str = "local"
+
+    # Hugging Face Hub token for gated models / inference access.
+    # Public HF models can often be used without a token.
+    huggingfacehub_api_token: str = ""
 
     # === Pinecone (Vector Database) Configuration ===
     # Pinecone API key (get from https://app.pinecone.io)
@@ -109,6 +118,15 @@ class Settings(BaseSettings):
     # Base URL of the frontend used to build payment links in emails.
     # Override in .env: APP_BASE_URL=https://yoursite.com
     app_base_url: str = "http://localhost:3000"
+
+    # === MCP Server Configuration ===
+    # URL of the MCP (Model Context Protocol) server for reservation recording
+    # Local: http://localhost:8001
+    # Render: https://parking-mcp-server-xxx.onrender.com
+    mcp_server_url: str = "http://localhost:8001"
+
+    # API key for authenticating with the MCP server
+    mcp_api_key: str = "mcp-parksmart-secret-key-2026"
 
     model_config = ConfigDict(
         env_file=".env",

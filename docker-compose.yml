@@ -23,7 +23,7 @@ services:
       - .env
     environment:
       - PYTHONUNBUFFERED=1
-      - SQL_DATABASE_URL=sqlite:///./data/parking_dynamic.db
+      - MCP_SERVER_URL=http://mcp:8001
     volumes:
       - backend-data:/app/data
       - backend-logs:/app/logs
@@ -34,6 +34,32 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
+    networks:
+      - parksmart-net
+
+  # ---- MCP Server ----
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: parksmart-mcp
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MCP_SERVER_URL=http://mcp:8001
+    volumes:
+      - backend-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/mcp/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    command: ["uvicorn", "src.mcp.mcp_server:mcp_app", "--host", "0.0.0.0", "--port", "8001", "--workers", "1"]
     networks:
       - parksmart-net
 

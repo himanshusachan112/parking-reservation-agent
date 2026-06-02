@@ -92,6 +92,17 @@ class Guardrails:
         self.enabled = settings.guardrails_enabled
         self.confidence_threshold = settings.pii_confidence_threshold
 
+        if not self.enabled:
+            self.presidio_available = False
+            self.analyzer = None
+            self.anonymizer = None
+            # Avoid importing Presidio or loading NLP models when guardrails are disabled.
+            self.injection_patterns = []
+            self.data_request_patterns = []
+            self.pii_patterns = {}
+            self.safe_patterns = []
+            return
+
         # Try to load Presidio (NLP-based PII detection)
         self.presidio_available = False
         try:
