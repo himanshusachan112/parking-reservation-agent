@@ -258,6 +258,19 @@ mcp_app = FastAPI(
 )
 
 
+@mcp_app.get("/")
+def root():
+    """Root path returns basic MCP server status and useful links."""
+    return {
+        "status": "running",
+        "service": "ParkSmart MCP Server",
+        "message": "Use /mcp/health for health checks or /docs for API documentation.",
+        "health_endpoint": "/mcp/health",
+        "docs": "/docs",
+        "tools_list": "/mcp/tools/list",
+    }
+
+
 @mcp_app.get("/mcp/health")
 def mcp_health():
     """
